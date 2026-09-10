@@ -350,13 +350,106 @@ class ArticulatoryEnergyModel:
 
         return output
 
+
     @classmethod
-    def repair_phonemes(cls, phonemes: list[Phoneme], profile=None, max_passes: int = 5) -> list[Phoneme]:
+    def resolve_hiatus(
+        cls,
+        p1: Phoneme,
+        p2: Phoneme,
+        profile=None,
+        cv_ratio: float = 1.20,
+        cultural_inertia: float = 1.0,
+    ) -> list[Phoneme]:
+        """
+        Continuous Boltzmann Hiatus Resolution Engine:
+        Dynamically selects between Gliding, Contraction, Elision, and Epenthesis
+        using continuous vocalic kinematics, C:V macro-state balance, and cultural inertia.
+        """
+        h1, b1, r1 = p1.point
+        h2, b2, r2 = p2.point
+        dh = abs(h1 - h2)
+        db = abs(b1 - b2)
+
+        # 1. Identical/Near-Identical Vowels -> Fused Geminate Long Vowel (V1 V1 -> V1ː)
+        if dh < 0.50 and db < 0.50:
+            return [p1, p1]
+
+        s_comp = getattr(profile, "syllable_complexity", 0.50) if profile else 0.50
+        inertia = max(0.20, float(cultural_inertia))
+        cv = max(0.50, float(cv_ratio))
+
+        # 2. Continuous Energy Costs for the 4 Strategies
+        # Strategy A: Gliding (V1 -> Glide: i+a -> ja, u+a -> wa)
+        if h1 >= 3.8:
+            e_glide = 0.60 * (6.0 - h1) + 0.40 * abs(b1 - 1.0) + 1.20 * max(0.0, cv - 1.30) + 0.50 * s_comp
+        else:
+            e_glide = 6.00  # Low vowels (/a/) cannot naturally glide without backing
+
+        # Strategy B: Crasis / Contraction (V1 + V2 -> V_fused: ai -> e, au -> o, ae -> eː)
+        is_closing = (h2 >= h1)
+        e_contract = 0.80 * (dh / 6.0) + (0.00 if is_closing else 0.85) + 0.40 * s_comp
+
+        # Strategy C: Elision (V1 drops: V1 + V2 -> V2, e.g. sˁä + e -> sˁe)
+        e_elide = 1.00 * inertia + 1.60 * max(0.0, 1.25 - cv)
+
+        # Strategy D: Epenthesis (V1 + C + V2: inserts j, w, or ʔ based on S_comp)
+        e_epenthesis = 2.20 * max(0.0, 1.40 - cv) + 1.20 * (1.00 - s_comp)
+
+        # 3. Normalized Boltzmann Distribution Sampling (T = 0.65)
+        strategies = ["glide", "contract", "elide", "epenthesis"]
+        energies = [e_glide, e_contract, e_elide, e_epenthesis]
+        
+        # Softmax probabilities
+        exp_weights = [math.exp(-e / 0.65) for e in energies]
+        total_weight = sum(exp_weights) or 1.0
+        probs = [w / total_weight for w in exp_weights]
+
+        chosen_strat = random.choices(strategies, weights=probs, k=1)[0]
+
+        # 4. Execute Winning Strategy
+        if chosen_strat == "glide":
+            # High-front -> /j/ (Place 6, Manner 6); High-back -> /w/ (Place 0, Manner 7)
+            glide_pt = (6.0, 6.0, 1.0) if b1 <= 1.0 else (0.0, 7.0, 1.0)
+            return [Phoneme(PhonemeKind.CONSONANT, glide_pt), p2]
+
+        elif chosen_strat == "contract":
+            # Quantal Formant Blending: ai -> e (h=4, b=0), au -> o (h=4, b=2)
+            if h1 <= 1.8 and h2 >= 3.8:
+                h_fused = 4.0
+                b_fused = 2.0 if b2 >= 1.2 else 0.0
+                r_fused = 1.0 if b2 >= 1.2 else 0.0
+            else:
+                h_fused = (h1 + h2) / 2.0
+                b_fused = (b1 + b2) / 2.0
+                r_fused = 1.0 if (r1 > 0.5 or r2 > 0.5) and b_fused >= 1.3 else 0.0
+            return [Phoneme(PhonemeKind.VOWEL, (h_fused, b_fused, r_fused))]
+
+        elif chosen_strat == "elide":
+            return [p2]
+
+        else:  # epenthesis
+            # Vocalic profiles insert smooth glides (j, w); Consonant-heavy profiles insert ʔ
+            if s_comp < 0.60 or cv < 1.40:
+                ep_pt = (6.0, 6.0, 1.0) if b1 <= 1.0 else (0.0, 7.0, 1.0)  # j or w
+            else:
+                ep_pt = (10.0, 0.0, 0.0)  # ʔ
+            return [p1, Phoneme(PhonemeKind.CONSONANT, ep_pt), p2]
+
+    
+    @classmethod
+    def repair_phonemes(
+        cls, 
+        phonemes: list[Phoneme], 
+        profile=None, 
+        max_passes: int = 5,
+        cultural_inertia: float = 1.0,
+    ) -> list[Phoneme]:
         """
         Executes Natural 3-Step Phonological Repair Sequence:
-        Step 1: Local Feature Assimilation (Voicing harmony, Continuous Homorganic Nasals, Spirantization).
+        Step 1A: Local Consonant Feature Assimilation.
+        Step 1B: Continuous Boltzmann Vocalic Hiatus Resolution (modulated by Cultural Inertia).
         Step 2: Re-evaluate transition cost.
-        Step 3: Epenthesis (Last resort for unresolved high friction or strict open CV).
+        Step 3: Epenthesis (Last resort for unresolved friction or strict open CV).
         """
         s_complex = getattr(profile, "syllable_complexity", 0.50) if profile is not None else 0.50
         max_cost = getattr(profile, "max_transition_cost", 3.00) if profile is not None else 3.00
@@ -374,42 +467,42 @@ class ArticulatoryEnergyModel:
             while i < n_p - 1:
                 p1, p2 = phonemes[i], phonemes[i + 1]
 
+                # -------------------------------------------------------------
+                # STEP 1A: CONSONANT FEATURE ASSIMILATION
+                # -------------------------------------------------------------
                 if p1.kind == PhonemeKind.CONSONANT and p2.kind == PhonemeKind.CONSONANT:
                     pl1, mn1_f, vc1_f = p1.point
                     pl2, mn2_f, vc2_f = p2.point
                     mn1, mn2 = int(round(mn1_f)), int(round(mn2_f))
                     vc1, vc2 = int(round(vc1_f)), int(round(vc2_f))
 
-                    # -------------------------------------------------------------
-                    # STEP 1: LOCAL FEATURE ASSIMILATION (First Line of Defense)
-                    # -------------------------------------------------------------
-                    # A. Obstruent Voicing Harmony (Regressive default: pd -> bd, zt -> st)
+                    # A. Obstruent Voicing Harmony (pd -> bd, zt -> st)
                     if mn1 in (0, 2, 4, 5) and mn2 in (0, 2, 4, 5) and vc1 != vc2:
                         target_vc = float(vc2) if bias_regressive else float(vc1)
                         phonemes[i] = p1.drift(point=(pl1, mn1_f, target_vc))
                         changed = True
 
-                    # B. Continuous Homorganic Nasal Assimilation (Nasals take EXACT Place of following stop)
+                    # B. Continuous Homorganic Nasal Assimilation
                     elif mn1 == 1 and mn2 in (0, 2) and abs(pl1 - pl2) > 0.40:
-                        phonemes[i] = p1.drift(point=(pl2, mn1_f, vc1_f))  # Exact place copy!
+                        phonemes[i] = p1.drift(point=(pl2, mn1_f, vc1_f))
                         changed = True
 
-                    # C. Double Stop Resolution: Gemination vs. Sibilant/Affricate Spirantization
+                    # C. Double Stop Resolution
                     elif mn1 in (0, 2) and mn2 in (0, 2) and abs(pl1 - pl2) > 0.50:
                         if double_stop_strat == "gemination":
                             phonemes[i] = p1.drift(point=(pl2, mn1_f, vc1_f))
                         else:
                             if pl1 <= 1.5:
-                                target_p = (1.0, 4.0, 0.0) if vc1 == 0 else (0.0, 7.0, 1.0)  # f / w
+                                target_p = (1.0, 4.0, 0.0) if vc1 == 0 else (0.0, 7.0, 1.0)
                             elif pl1 <= 5.5:
-                                target_p = (3.0, 4.0, float(vc1))                             # s / z
+                                target_p = (3.0, 4.0, float(vc1))
                             else:
-                                target_p = (7.0, 4.0, 0.0) if vc1 == 0 else (6.0, 6.0, 1.0)  # x / j
+                                target_p = (7.0, 4.0, 0.0) if vc1 == 0 else (6.0, 6.0, 1.0)
                             phonemes[i] = p1.drift(point=target_p)
                         changed = True
 
                     # -------------------------------------------------------------
-                    # STEP 2 & 3: RE-EVALUATE AND APPLY EPENTHESIS (Last Resort)
+                    # STEPS 2 & 3: RE-EVALUATE AND EPENTHESIS
                     # -------------------------------------------------------------
                     cost = cls.transition_cost(phonemes[i], phonemes[i + 1])
                     if strict_open or (cost > max_cost):
@@ -419,6 +512,34 @@ class ArticulatoryEnergyModel:
                         n_p += 1
                         i += 2
                         continue
+
+                # -------------------------------------------------------------
+                # STEP 1B: VOCALIC HIATUS RESOLUTION (Coupled to Cultural Inertia)
+                # -------------------------------------------------------------
+                elif p1.kind == PhonemeKind.VOWEL and p2.kind == PhonemeKind.VOWEL:
+                    dh = abs(p1.point[0] - p2.point[0])
+                    db = abs(p1.point[1] - p2.point[1])
+
+                    if dh < 0.40 and db < 0.40:
+                        i += 1
+                        continue
+
+                    num_c = sum(1 for p in phonemes if p.kind == PhonemeKind.CONSONANT)
+                    num_v = sum(1 for p in phonemes if p.kind == PhonemeKind.VOWEL)
+                    cv_local = num_c / max(1.0, float(num_v))
+
+                    resolved_hiatus = cls.resolve_hiatus(
+                        p1, p2, 
+                        profile=profile, 
+                        cv_ratio=cv_local,
+                        cultural_inertia=cultural_inertia
+                    )
+
+                    phonemes[i:i + 2] = resolved_hiatus
+                    changed = True
+                    n_p = len(phonemes)
+                    i += max(1, len(resolved_hiatus) - 1)
+                    continue
 
                 i += 1
 
@@ -431,11 +552,21 @@ class ArticulatoryEnergyModel:
         return cls.clean_clusters_and_degeminate(phonemes, syllable_complexity=s_complex)
 
     @classmethod
-    def repair_word(cls, word: Word, profile=None, max_passes: int = 5) -> Word:
+    def repair_word(
+        cls, 
+        word: Word, 
+        profile=None, 
+        max_passes: int = 5,
+        cultural_inertia: float = 1.0,
+    ) -> Word:
         """Repairs word phonemes and resynchronizes internal morpheme slice boundaries."""
-        cleaned = cls.repair_phonemes(list(word.phonemes), profile, max_passes)
+        cleaned = cls.repair_phonemes(
+            list(word.phonemes), 
+            profile=profile, 
+            max_passes=max_passes,
+            cultural_inertia=cultural_inertia
+        )
         
-        # Synchronize morphemes with cleaned phoneme structure
         resynced_morphemes = cls.clean_morpheme_structure(
             word.morphemes,
             root_family_id=word.derivation.root_family_id,
@@ -448,6 +579,7 @@ class ArticulatoryEnergyModel:
             word_id=word.id,
             vector=word.vector,
             phonemes=cleaned,
+            syllables=word.syllables,
             morphemes=resynced_morphemes,
             derivation=word.derivation,
             usage_frequency=word.usage_frequency,

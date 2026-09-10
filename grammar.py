@@ -451,7 +451,9 @@ class GrammarEngine:
             is_ephemeral=True,
         )
 
-        repaired = ArticulatoryEnergyModel.repair_word(inflected_word, lang.profile)
+        prof = lang.profile if lang else None
+        inertia = getattr(lang, "cultural_inertia", 1.0) if lang else 1.0
+        repaired = ArticulatoryEnergyModel.repair_word(inflected_word, prof, cultural_inertia=inertia) if prof else inflected_word
         final_word = SyllableEngine.apply_prosody(repaired, pattern=lang.profile.stress_pattern, tone_tier=lang.profile.tone_tier)
         return final_word, True
 
@@ -1122,7 +1124,8 @@ class GrammarEngine:
         )
 
         prof = lang.profile if lang else None
-        repaired = ArticulatoryEnergyModel.repair_word(inflected_verb, prof) if prof else inflected_verb
+        inertia = getattr(lang, "cultural_inertia", 1.0) if lang else 1.0
+        repaired = ArticulatoryEnergyModel.repair_word(inflected_verb, prof, cultural_inertia=inertia) if prof else inflected_verb
         stress_p = prof.stress_pattern if prof else StressPattern.PENULTIMATE
         t_tier = prof.tone_tier if prof else 0
         final_verb = SyllableEngine.apply_prosody(repaired, pattern=stress_p, tone_tier=t_tier)

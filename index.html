@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>EvoLang — Linguistic Atlas & Evolution Observer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; }
+    body { background: #0e1117; color: #e0e6ed; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+    header { background: #161b22; border-bottom: 1px solid #30363d; padding: 8px 18px; display: flex; justify-content: space-between; align-items: center; }
+    h1 { font-size: 1.05rem; color: #58a6ff; letter-spacing: 0.5px; }
+
+    .workspace { display: grid; grid-template-columns: 1fr 450px; flex: 1; overflow: hidden; }
+
+    .map-container { position: relative; background: #05070a; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    canvas { border: 1px solid #30363d; cursor: crosshair; }
+    .map-layers { position: absolute; bottom: 12px; left: 12px; background: rgba(22, 27, 34, 0.9); padding: 6px 10px; border-radius: 6px; border: 1px solid #30363d; font-size: 0.75rem; }
+    .map-layers select { background: #0e1117; color: #e0e6ed; border: 1px solid #30363d; padding: 3px; border-radius: 4px; }
+
+    /* Right Panel & Controls */
+    .right-panel { background: #161b22; border-left: 1px solid #30363d; display: flex; flex-direction: column; overflow: hidden; }
+    .control-deck { background: #21262d; border-bottom: 2px solid #58a6ff; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+    .deck-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .epoch-badge { font-size: 0.95rem; font-weight: bold; color: #7ee787; background: #0e1117; padding: 3px 8px; border-radius: 4px; border: 1px solid #30363d; }
+    
+    button { background: #238636; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.8rem; }
+    button:hover { background: #2ea043; }
+    button.pause { background: #da3633; }
+    button.secondary { background: #30363d; }
+    button.secondary:hover { background: #8b949e; }
+
+    /* Tabs Navigation */
+    .tab-bar { display: flex; background: #0e1117; border-bottom: 1px solid #30363d; }
+    .tab-btn { flex: 1; padding: 8px 4px; background: transparent; border: none; color: #8b949e; font-size: 0.75rem; font-weight: 600; cursor: pointer; text-align: center; border-bottom: 2px solid transparent; }
+    .tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; background: #161b22; }
+
+    /* Tab Content Areas */
+    .tab-pane { padding: 12px; overflow-y: auto; flex: 1; display: none; flex-direction: column; gap: 10px; }
+    .tab-pane.active { display: flex; }
+
+    .card { background: #0e1117; border: 1px solid #30363d; border-radius: 6px; padding: 10px; font-size: 0.8rem; }
+    .card-title { font-size: 0.7rem; text-transform: uppercase; color: #8b949e; margin-bottom: 6px; font-weight: bold; letter-spacing: 0.5px; }
+
+    .stat-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .stat-val { font-weight: 600; color: #f0f6fc; }
+
+    /* 7D Genome Visualization */
+    .genome-bar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 0.75rem; }
+    .genome-label { width: 90px; color: #8b949e; }
+    .genome-progress { flex: 1; height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; }
+    .genome-fill { height: 100%; background: #58a6ff; border-radius: 3px; }
+
+    .tag-cloud { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .tag { background: #21262d; border: 1px solid #30363d; color: #79c0ff; padding: 2px 5px; border-radius: 3px; font-size: 0.75rem; }
+
+    /* Paradigm Table */
+    table { width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-top: 4px; }
+    th, td { border: 1px solid #30363d; padding: 4px 6px; text-align: left; }
+    th { background: #21262d; color: #8b949e; }
+
+    /* Searchable Lexicon */
+    .search-input { width: 100%; background: #21262d; border: 1px solid #30363d; color: #fff; padding: 5px 8px; border-radius: 4px; font-size: 0.75rem; margin-bottom: 6px; }
+    .word-list { max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .word-item { display: flex; justify-content: space-between; background: #161b22; padding: 4px 8px; border-radius: 4px; border: 1px solid #21262d; }
+
+    .event-ticker { background: #090d12; border-top: 1px solid #30363d; padding: 5px 14px; font-size: 0.75rem; color: #8b949e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>EvoLang — Generative Linguistic Atlas & Evolution Observer</h1>
+    <span style="font-size: 0.75rem; color: #8b949e;">Phase 2: Live Grammar & Lexicon Dashboard</span>
+  </header>
+
+  <div class="workspace">
+    <div class="map-container">
+      <canvas id="worldCanvas" width="600" height="600"></canvas>
+      <div class="map-layers">
+        Layer: 
+        <select id="layerSelect" onchange="renderWorld()">
+          <option value="alt">Topography (Elevation)</option>
+          <option value="hum">Humidity (Rainfall)</option>
+          <option value="veg">Vegetation Canopy</option>
+          <option value="temp">Temperature</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <!-- Right-Handed Controls Pinned at Top -->
+      <div class="control-deck">
+        <div class="deck-row">
+          <span class="epoch-badge" id="epochDisplay">Epoch: 0</span>
+          <div>
+            <button id="playBtn" onclick="togglePlay()">▶ Play</button>
+            <button class="secondary" onclick="step(1)">⏭ 1</button>
+            <button class="secondary" onclick="step(25)">⏭ 25</button>
+          </div>
+        </div>
+        <div class="deck-row">
+          <label style="font-size: 0.75rem; color: #8b949e;">Pace:</label>
+          <input type="range" id="speedSlider" min="100" max="1500" value="350" style="flex:1;">
+          <span id="speedLabel" style="font-size: 0.75rem; color: #8b949e;">350ms</span>
+        </div>
+        <select id="civSelect" onchange="selectCiv(this.value)" style="width: 100%; background: #0e1117; color: #fff; border: 1px solid #30363d; padding: 5px; border-radius: 4px;">
+        </select>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
+        <button class="tab-btn" onclick="switchTab('culture')">7D Mindset</button>
+        <button class="tab-btn" onclick="switchTab('phonology')">Phonology</button>
+        <button class="tab-btn" onclick="switchTab('grammar')">Grammar & Lex</button>
+      </div>
+
+      <!-- Tab 1: Overview -->
+      <div class="tab-pane active" id="tab-overview">
+        <div class="card">
+          <div class="card-title">Society & Demographics</div>
+          <div class="stat-row"><span>Population:</span><span class="stat-val" id="dispPop">-</span></div>
+          <div class="stat-row"><span>Environment:</span><span class="stat-val" id="dispClimate">-</span></div>
+          <div class="stat-row"><span>Living Vocabulary:</span><span class="stat-val" id="dispWordCount">-</span></div>
+          <div class="stat-row"><span>Typological Order:</span><span class="stat-val" id="dispSyntax">-</span></div>
+          <div class="stat-row"><span>Syntactic Alignment:</span><span class="stat-val" id="dispAlign">-</span></div>
+          <div class="stat-row"><span>Cultural Purism:</span><span class="stat-val" id="dispPurism">-</span></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Acoustic Metrics</div>
+          <div class="stat-row"><span>C:V Ratio:</span><span class="stat-val" id="dispCV">-</span></div>
+          <div class="stat-row"><span>Shannon Entropy:</span><span class="stat-val" id="dispEntropy">-</span></div>
+        </div>
+      </div>
+
+      <!-- Tab 2: 7D Cultural Genome -->
+      <div class="tab-pane" id="tab-culture">
+        <div class="card">
+          <div class="card-title">Cognitive Attention Allocation (Budget = 7.0)</div>
+          <div id="genomeBars"></div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Phonology -->
+      <div class="tab-pane" id="tab-phonology">
+        <div class="card">
+          <div class="card-title">Vowel Inventory</div>
+          <div class="tag-cloud" id="vowelTags"></div>
+          <div class="card-title" style="margin-top: 10px;">Consonant Inventory</div>
+          <div class="tag-cloud" id="consonantTags"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Top Frequencies</div>
+          <div style="font-size: 0.75rem; color: #8b949e;">Top Consonants:</div>
+          <div id="topConsList" style="margin-bottom: 6px;"></div>
+          <div style="font-size: 0.75rem; color: #8b949e;">Top Vowels:</div>
+          <div id="topVowList"></div>
+        </div>
+      </div>
+
+      <!-- Tab 4: Comprehensive Grammar & Lexicon Dashboard -->
+      <div class="tab-pane" id="tab-grammar">
+        <!-- Grammar Profile Card -->
+        <div class="card">
+          <div class="card-title">Morphosyntactic Profile</div>
+          <div class="stat-row"><span>Word Order:</span><span class="stat-val" id="gramSyntax">-</span></div>
+          <div class="stat-row"><span>Morphological Synthesis:</span><span class="stat-val" id="gramSynthesis">-</span></div>
+          <div class="stat-row"><span>Morphological Alignment:</span><span class="stat-val" id="gramAlign">-</span></div>
+          <div class="stat-row"><span>Tone System:</span><span class="stat-val" style="color: #79c0ff;" id="gramTones">-</span></div>
+          <div class="stat-row"><span>Grammatical Number:</span><span class="stat-val" id="gramNumber">-</span></div>
+          <div class="stat-row"><span>Article System:</span><span class="stat-val" id="gramArticles">-</span></div>
+          <div class="stat-row"><span>Counting Radix:</span><span class="stat-val" id="gramNumerals">-</span></div>
+        </div>
+
+        <!-- Noun Class / Declension Selector -->
+        <div class="card">
+          <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Noun Declension Paradigm</span>
+            <select id="nounClassSelect" onchange="renderNounTable(this.value)" style="background:#21262d; color:#fff; border:1px solid #30363d; font-size:0.7rem; padding:2px 4px; border-radius:3px;">
+            </select>
+          </div>
+          <div style="font-size:0.75rem; color:#8b949e; margin-bottom:4px;" id="nounClassDetails"></div>
+          <table id="declTable"></table>
+        </div>
+
+        <!-- Verb Aktionsart / Conjugation Selector -->
+        <div class="card">
+          <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Verb Conjugation Paradigm</span>
+            <select id="verbClassSelect" onchange="renderVerbTable(this.value)" style="background:#21262d; color:#fff; border:1px solid #30363d; font-size:0.7rem; padding:2px 4px; border-radius:3px;">
+            </select>
+          </div>
+          <div style="font-size:0.75rem; color:#8b949e; margin-bottom:4px;" id="verbClassDetails"></div>
+          <table id="conjTable"></table>
+        </div>
+
+        <!-- Searchable Living Dictionary -->
+        <div class="card">
+          <div class="card-title">Living Dictionary</div>
+          <input type="text" class="search-input" id="lexSearch" placeholder="Search meaning or IPA..." oninput="filterLexicon()">
+          <div class="word-list" id="lexiconList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="event-ticker" id="tickerDisplay">Connecting to simulation backend...</div>
+
+  <script>
+    let worldState = null;
+    let selectedCivName = null;
+    let isPlaying = false;
+    let playInterval = null;
+
+    async function fetchState() {
+      const res = await fetch('/api/state');
+      worldState = await res.json();
+      updateUI();
+    }
+
+    async function step(epochs = 1) {
+      const res = await fetch('/api/step', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ epochs })
+      });
+      worldState = await res.json();
+      updateUI();
+    }
+
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      const btn = document.getElementById('playBtn');
+      if (isPlaying) {
+        btn.innerText = "❚❚ Pause";
+        btn.classList.add("pause");
+        const intervalMs = parseInt(document.getElementById('speedSlider').value);
+        playInterval = setInterval(() => step(1), intervalMs);
+      } else {
+        btn.innerText = "▶ Play";
+        btn.classList.remove("pause");
+        clearInterval(playInterval);
+      }
+    }
+
+    document.getElementById('speedSlider').oninput = function() {
+      document.getElementById('speedLabel').innerText = this.value + 'ms';
+      if (isPlaying) {
+        clearInterval(playInterval);
+        playInterval = setInterval(() => step(1), parseInt(this.value));
+      }
+    };
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelector(`[onclick="switchTab('${tabId}')"]`).classList.add('active');
+      document.getElementById(`tab-${tabId}`).classList.add('active');
+    }
+
+    function updateUI() {
+      if (!worldState) return;
+      document.getElementById('epochDisplay').innerText = `Epoch: ${worldState.epoch}`;
+
+      if (worldState.events && worldState.events.length > 0) {
+        document.getElementById('tickerDisplay').innerHTML = `<span>Latest Event:</span> ${worldState.events[worldState.events.length - 1]}`;
+      }
+
+      const select = document.getElementById('civSelect');
+      const prevSelected = selectedCivName || (worldState.civs[0] ? worldState.civs[0].name : null);
+      select.innerHTML = '';
+      worldState.civs.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.name;
+        opt.innerText = `${c.name} (${c.word_count} words)`;
+        if (c.name === prevSelected) opt.selected = true;
+        select.appendChild(opt);
+      });
+
+      selectedCivName = select.value;
+      updateInspector();
+      renderWorld();
+    }
+
+    function selectCiv(name) {
+      selectedCivName = name;
+      const select = document.getElementById('civSelect');
+      if (select) select.value = name;
+      updateInspector();
+      renderWorld();
+    }
+
+    function formatIpa(text) {
+      if (!text) return "";
+      return text.replace(/([˥˦˧˨˩]+)/g, '<span style="color:#f2cc60; font-weight:normal; text-shadow:0 0 4px rgba(242,204,96,0.35);">$1</span>');
+    }
+
+    // In updateInspector(), update the dropdown and sample word:
+    function updateInspector() {
+      if (!worldState) return;
+      const civ = worldState.civs.find(c => c.name === selectedCivName) || worldState.civs[0];
+      if (!civ) return;
+
+      // Tab 1: Overview
+      document.getElementById('dispPop').innerText = `${Math.round(civ.population * 100000).toLocaleString()} (Pop: ${civ.population})`;
+      document.getElementById('dispClimate').innerText = `Alt:${civ.alt}, Hum:${civ.hum}, Temp:${civ.temp}`;
+      document.getElementById('dispWordCount').innerText = `${civ.word_count} words`;
+      document.getElementById('dispSyntax').innerText = `${civ.word_order} (h=${civ.head_dir})`;
+      document.getElementById('dispAlign').innerText = `${civ.alignment}`;
+      document.getElementById('dispPurism').innerText = `${civ.cultural_inertia}`;
+      document.getElementById('dispCV').innerText = `${civ.cv_ratio}`;
+      document.getElementById('dispEntropy').innerText = `${civ.entropy}`;
+
+      // Sample Word card with tone formatting
+      document.getElementById('sampleWord').innerHTML = `/${formatIpa(civ.sample_word)}/`;
+
+      // Tab 2: 7D Genome
+      const gNames = ["Concreteness", "Animacy", "Valence", "Potency", "Dynamism", "Sociality", "Extension"];
+      const gContainer = document.getElementById('genomeBars');
+      gContainer.innerHTML = civ.attention.map((val, i) => `
+        <div class="genome-bar-row">
+          <span class="genome-label">${gNames[i]}:</span>
+          <div class="genome-progress"><div class="genome-fill" style="width: ${(val / 2.5) * 100}%"></div></div>
+          <span style="width: 32px; font-weight: bold; text-align: right;">${val.toFixed(2)}</span>
+        </div>
+      `).join('');
+
+      // Tab 3: Phonology
+      document.getElementById('vowelTags').innerHTML = civ.vowels.map(v => `<span class="tag">/${formatIpa(v)}/</span>`).join('');
+      document.getElementById('consonantTags').innerHTML = civ.consonants.map(c => `<span class="tag">/${c}/</span>`).join('');
+      document.getElementById('topConsList').innerHTML = civ.top_consonants.map(item => `/${item[0]}/ (${item[1]}%)`).join(' • ');
+      document.getElementById('topVowList').innerHTML = civ.top_vowels.map(item => `/${formatIpa(item[0])}/ (${item[1]}%)`).join(' • ');
+
+      // Tab 4: Grammar Profile
+      document.getElementById('gramSyntax').innerText = `${civ.word_order} (Head-Dir: ${civ.head_dir})`;
+      document.getElementById('gramSynthesis').innerText = `${civ.synthesis_index < 0.35 ? 'Analytic / Isolating' : (civ.synthesis_index > 0.65 ? 'Agglutinative / Synthetic' : 'Synthetic / Fusional')} (S_idx: ${civ.synthesis_index})`;
+      document.getElementById('gramAlign').innerText = civ.alignment;
+      document.getElementById('gramTones').innerHTML = formatIpa(civ.tone_desc);
+      document.getElementById('gramNumber').innerText = civ.number_system;
+      document.getElementById('gramArticles').innerText = civ.article_system;
+      document.getElementById('gramNumerals').innerText = civ.numeral_system;
+
+      // Clean Noun Class Selector (Eliminates "Class 1 (1)" repetition!)
+      const nSelect = document.getElementById('nounClassSelect');
+      nSelect.innerHTML = '';
+      civ.noun_classes.forEach((nc, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.innerText = nc.label;  // Cleanly displays "Class 1 (Animate-Extended)"
+        nSelect.appendChild(opt);
+      });
+      renderNounTable(0);
+
+      // Verb Class Selector
+      const vSelect = document.getElementById('verbClassSelect');
+      vSelect.innerHTML = '';
+      civ.verb_classes.forEach((vc, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.innerText = `${vc.label}: ${vc.aspect} (${vc.strategy})`;
+        vSelect.appendChild(opt);
+      });
+      renderVerbTable(0);
+
+      filterLexicon();
+    }
+
+    function renderNounTable(classIdx) {
+      if (!worldState) return;
+      const civ = worldState.civs.find(c => c.name === selectedCivName) || worldState.civs[0];
+      if (!civ || !civ.noun_classes[classIdx]) return;
+
+      const nc = civ.noun_classes[classIdx];
+      document.getElementById('nounClassDetails').innerHTML = `${nc.label} | Marker: ${formatIpa(nc.marker)} | Sample: /${formatIpa(nc.sample_form)}/ «${nc.sample_gloss}»`;
+      
+      const dTable = document.getElementById('declTable');
+      dTable.innerHTML = '<tr><th>Paradigm Case</th><th>Surface Form</th></tr>';
+      for (const [k, v] of Object.entries(nc.declension)) {
+        dTable.innerHTML += `<tr><td>${k}</td><td style="color:#7ee787; font-weight:bold;">${formatIpa(v)}</td></tr>`;
+      }
+    }
+
+    function renderVerbTable(classIdx) {
+      if (!worldState) return;
+      const civ = worldState.civs.find(c => c.name === selectedCivName) || worldState.civs[0];
+      if (!civ || !civ.verb_classes[classIdx]) return;
+
+      const vc = civ.verb_classes[classIdx];
+      document.getElementById('verbClassDetails').innerHTML = `${vc.label} | Stem: ${formatIpa(vc.thematic)} | Strategy: ${vc.strategy} | Sample: /${formatIpa(vc.sample_form)}/ «${vc.sample_gloss}»`;
+
+      const cTable = document.getElementById('conjTable');
+      cTable.innerHTML = '<tr><th>TAM / Person</th><th>Surface Form</th></tr>';
+      for (const [k, v] of Object.entries(vc.conjugation)) {
+        cTable.innerHTML += `<tr><td>${k}</td><td style="color:#58a6ff; font-weight:bold;">${formatIpa(v)}</td></tr>`;
+      }
+    }
+
+    function filterLexicon() {
+      if (!worldState) return;
+      const civ = worldState.civs.find(c => c.name === selectedCivName) || worldState.civs[0];
+      if (!civ || !civ.lexicon) return;
+
+      const q = document.getElementById('lexSearch').value.toLowerCase();
+      const list = document.getElementById('lexiconList');
+      const filtered = civ.lexicon.filter(w => w.gloss.toLowerCase().includes(q) || w.plain.toLowerCase().includes(q));
+
+      list.innerHTML = filtered.map(w => `
+        <div class="word-item">
+          <div><span style="color:#7ee787; font-weight:bold;">/${formatIpa(w.form)}/</span> «${w.gloss}»</div>
+          <div style="font-size:0.7rem; color:#8b949e;">${w.pos} • U=${w.freq}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderWorld() {
+      if (!worldState || !worldState.terrain) return;
+      const canvas = document.getElementById('worldCanvas');
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      const grid = worldState.terrain;
+      const res = grid.length;
+      const cellW = w / res;
+      const cellH = h / res;
+      const layer = document.getElementById('layerSelect').value;
+
+      for (let r = 0; r < res; r++) {
+        for (let c = 0; c < res; c++) {
+          const val = grid[r][c][layer];
+          if (layer === 'alt') {
+            const lum = Math.floor(val * 180 + 30);
+            ctx.fillStyle = val < 0.25 ? `rgb(10, 40, ${Math.floor(val*600)+80})` : `rgb(${lum}, ${lum+20}, ${lum})`;
+          } else if (layer === 'hum') {
+            ctx.fillStyle = `rgb(20, ${Math.floor(val * 150 + 40)}, ${Math.floor(val * 220 + 30)})`;
+          } else if (layer === 'veg') {
+            ctx.fillStyle = `rgb(10, ${Math.floor(val * 200 + 30)}, 30)`;
+          } else {
+            ctx.fillStyle = `rgb(${Math.floor(val * 220 + 30)}, 40, 40)`;
+          }
+          ctx.fillRect(c * cellW, r * cellH, cellW + 1, cellH + 1);
+        }
+      }
+
+      const colors = ["#58a6ff", "#7ee787", "#f0883e", "#d2a8ff", "#ff7b72"];
+      worldState.civs.forEach((civ, i) => {
+        const cx = civ.x * w;
+        const cy = civ.y * h;
+        const radius = Math.max(16, Math.sqrt(civ.population) * 70);
+        const color = colors[i % colors.length];
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = color + "22";
+        ctx.fill();
+        ctx.strokeStyle = color + "88";
+        ctx.lineWidth = (civ.name === selectedCivName) ? 3 : 1.5;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+        ctx.fillStyle = (civ.name === selectedCivName) ? "#ffffff" : color;
+        ctx.fill();
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.font = "bold 11px monospace";
+        ctx.fillStyle = "#ffffff";
+        ctx.shadowColor = "#000000";
+        ctx.shadowBlur = 4;
+        ctx.fillText(civ.name, cx + 10, cy + 4);
+        ctx.shadowBlur = 0;
+      });
+    }
+
+    document.getElementById('worldCanvas').onclick = function(e) {
+      if (!worldState) return;
+      const rect = this.getBoundingClientRect();
+      const clickX = (e.clientX - rect.left) / this.width;
+      const clickY = (e.clientY - rect.top) / this.height;
+
+      let closestCiv = null;
+      let minDist = 999;
+      worldState.civs.forEach(c => {
+        const d = Math.sqrt((c.x - clickX)**2 + (c.y - clickY)**2);
+        if (d < minDist) { minDist = d; closestCiv = c; }
+      });
+
+      if (closestCiv && minDist < 0.18) {
+        selectCiv(closestCiv.name);
+      }
+    };
+
+    fetchState();
+  </script>
+</body>
+</html>

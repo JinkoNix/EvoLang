@@ -39,34 +39,34 @@ class Environment:
     ) -> LanguageProfile:
         """
         Layer 2: Derives continuous physical acoustic impedance channels and
-        morphosyntactic targets using self-bounding logistic response curves.
+        morphosyntactic targets. Fully supports extreme worlds (T=2.00, Pop=5.00, Alt=3.00).
         """
-        # 1. Atmospheric Air Density (ρ_air) [Exponential barometric pressure equation]
-        rho_air = math.exp(-2.40 * max(0.0, self.altitude)) * (1.0 - 0.20 * (self.temperature - 0.50))
+        # 1. Atmospheric Air Density (Ideal Gas Law Exponential: strictly real & positive for all T, Alt)
+        rho_air = math.exp(-2.40 * max(0.0, self.altitude)) * math.exp(-0.25 * (self.temperature - 0.50))
 
-        # 2. Vocal Fold Tissue Hydration & Compliance (μ_vocal) [Logistic humidity response]
+        # 2. Vocal Fold Compliance (T in [-inf, +inf], H in [-inf, +inf])
         mu_vocal = (1.0 / (1.0 + math.exp(-6.0 * (self.humidity - 0.45)))) * math.exp(-2.0 * ((self.temperature - 0.60) ** 2))
 
-        # 3. High-Frequency Spectral Damping (α_damp) [Canopy scattering sigmoid]
+        # 3. High-Frequency Spectral Damping
         alpha_damp = 1.0 / (1.0 + math.exp(-5.0 * ((self.vegetation * 0.65 + self.humidity * 0.35) - 0.50)))
 
-        # 4. Continuous Syllable Complexity (S_comp) [Self-bounding in [0.10, 0.90]]
-        s_comp_driver = alpha_damp + (self.ambient_noise * 0.35) - ((1.0 - rho_air) * 0.60) - 0.40
+        # 4. Continuous Syllable Complexity (Self-bounding in [0.10, 0.90] for any inputs)
+        s_comp_driver = alpha_damp + (max(0.0, self.ambient_noise) * 0.35) - ((1.0 - rho_air) * 0.60) - 0.40
         syllable_complexity = round(0.10 + (0.80 / (1.0 + math.exp(5.0 * s_comp_driver))), 3)
         allow_clusters = (syllable_complexity >= 0.28)
         max_transition_cost = round(2.0 + (3.80 * syllable_complexity), 2)
 
-        # 5. Continuous Vowel Dispersion Threshold (Vapor Pressure Deficit Biophysics)
-        aridity = 1.0 - self.humidity
-        vpd = max(0.0, (self.temperature ** 1.2) * aridity * 1.50 - 0.20)
-        v_driver = vpd + (self.ambient_noise * 0.15) - (alpha_damp * 0.15) - 0.35
+        # 5. Continuous Vowel Dispersion (Vapor Pressure Deficit supports T > 1.0 without crashing on T < 0)
+        aridity = max(0.0, 1.0 - self.humidity)
+        vpd = (max(0.0, self.temperature) ** 1.2) * aridity * 1.50
+        v_driver = vpd + (max(0.0, self.ambient_noise) * 0.15) - (alpha_damp * 0.15) - 0.35
         d_min_vowel = round(0.12 + (0.22 / (1.0 + math.exp(-6.0 * v_driver))), 3)
 
-        # 6. Continuous Consonant Dispersion Threshold (d_min_consonant) [Self-bounding in [0.22, 0.34]]
+        # 6. Continuous Consonant Dispersion Threshold
         d_min_consonant = round(0.22 + (0.12 / (1.0 + math.exp(-5.0 * (rho_air - 0.60)))), 3)
 
-        # 7. Continuous Haudricourt Tonogenesis Capacity (Smooth Sigmoid, Zero Cliffs)
-        tonal_driver = (mu_vocal * 1.40) + (self.humidity * 0.80) - (self.population * 0.80) - 1.20
+        # 7. Continuous Haudricourt Tonogenesis Capacity
+        tonal_driver = (mu_vocal * 1.40) + (self.humidity * 0.80) - (max(0.0, self.population) * 0.80) - 1.20
         raw_tone_tier = 8.0 / (1.0 + math.exp(-4.5 * tonal_driver))
 
         if raw_tone_tier < 1.20:
@@ -74,7 +74,7 @@ class Environment:
         else:
             tone_tier = int(round(raw_tone_tier / 2.0) * 2)
 
-        # 8. Continuous Vowel Reduction Mode
+        # 8. Vowel Reduction Mode
         if tone_tier > 0:
             vowel_reduction_mode = "none" if syllable_complexity < 0.25 else "inventory_snap"
         else:
@@ -86,11 +86,11 @@ class Environment:
             else:
                 vowel_reduction_mode = "inventory_snap"
 
-        # 9. Epenthetic Vowel Barycenter (Resting mandibular posture)
-        ep_height = round(6.0 * (1.0 - self.temperature), 2)
+        # 9. Epenthetic Vowel Barycenter (Bounded to vocal tract height [0, 6])
+        ep_height = round(max(0.0, min(6.0, 6.0 * (1.0 - self.temperature))), 2)
         epenthetic_vowel = (ep_height, 1.0, 0.0)
 
-        # 10. Continuous Metrical Stress Pattern Assignment
+        # 10. Metrical Stress Pattern
         p_initial = 1.0 / (1.0 + math.exp(-6.0 * (self.altitude - 0.45)))
         p_penult = 1.0 / (1.0 + math.exp(6.0 * (syllable_complexity - 0.35)))
         
@@ -109,15 +109,14 @@ class Environment:
             h_choice = random.choices([0.15, 0.50, 0.85], weights=[45.0, 45.0, 10.0])[0]
             head_directionality = h_choice + random.uniform(-0.06, 0.06)
 
-        # 12. Morphological Synthesis Target (S_idx) [Self-bounding in [0.12, 0.88]]
-        s_driver = (self.population ** 1.3) - (self.altitude * 0.55) - 0.40
+        # 12. Morphological Synthesis Target (Protected against Pop < 0)
+        s_driver = (max(0.0, self.population) ** 1.3) - (self.altitude * 0.55) - 0.40
         synthesis_index = round(0.12 + (0.76 / (1.0 + math.exp(4.5 * s_driver))), 3)
 
-        # 13. Continuous Acoustic Roughness Index (R_rough) [Self-bounding in [0.10, 0.90]]
+        # 13. Acoustic Roughness (Self-bounding in [0.10, 0.90])
         attn = cultural_attention or [1.0] * 7
         w_con, w_anim, w_val, w_pot, w_dyn, w_soc, w_ext = attn
         
-        aridity = 1.0 - self.humidity
         rough_driver = (
             (w_pot * 1.20 + w_con * 0.50) -
             (w_soc * 1.05 + w_val * 0.50) +
@@ -156,10 +155,30 @@ class TerrainField:
 
     @staticmethod
     def _default_continental_heightmap(x: float, y: float) -> float:
-        dist_to_spine = math.sqrt((x - 0.75) ** 2 + (y - 0.80) ** 2)
-        mountain_peak = 0.95 * math.exp(-(dist_to_spine ** 2) / 0.08)
-        coastal_shelf = max(0.0, (x - 0.20) * 0.40)
-        return round(mountain_peak + coastal_shelf, 3)
+        """
+        Realistic Continental & Oceanic Geography:
+        - Western Ocean (x < 0.20)
+        - Central Plains & Mountain Spine (x ~ 0.55 - 0.72, y ~ 0.75)
+        - Eastern Inland Sea (x ~ 0.75 - 0.82, Alt < 0.20: Blue Water!)
+        - Eastern Volcanic Island Arc / Archipelago (x ~ 0.84 - 0.88, Alt ~ 0.30)
+        - Deep Pacific Ocean (x > 0.92, Blue Water!)
+        """
+        # Central mountain spine
+        dist_to_spine = math.sqrt((x - 0.65) ** 2 + ((y - 0.75) * 1.4) ** 2)
+        mountain_peak = 0.95 * math.exp(-(dist_to_spine ** 2) / 0.06)
+
+        # Continental body (rises in center, drops on both coasts)
+        continental_mass = 0.45 * math.sin(max(0.0, min(1.0, (x - 0.18) / 0.60)) * math.pi)
+
+        # Eastern Inland Sea Trench (Drops elevation below sea level between x=0.75 and 0.82)
+        sea_trench = 0.35 * math.exp(-((x - 0.78) ** 2) / 0.003)
+
+        # Eastern Island Arc / Archipelago (Japan / Insular Arc at x ~ 0.85)
+        dist_to_island_arc = math.sqrt(((x - 0.85) * 1.8) ** 2 + ((y - 0.50) * 0.8) ** 2)
+        island_arc = 0.38 * math.exp(-(dist_to_island_arc ** 2) / 0.04)
+
+        raw_elevation = mountain_peak + continental_mass - sea_trench + island_arc
+        return round(max(0.05, raw_elevation), 3)
 
     def sample_environment(self, x: float, y: float, population: float = 0.50) -> Environment:
         clamped_x = max(0.0, min(1.0, float(x)))
@@ -167,28 +186,32 @@ class TerrainField:
 
         altitude = self.elevation_fn(clamped_x, clamped_y)
         
-        # Temperature: Latitude gradient + lapse cooling
+        # Temperature: Latitude gradient + lapse cooling (Can drop below 0.0 in polar peaks!)
         base_temp = 0.95 - (clamped_y * 0.55)
         lapse_cooling = altitude * 0.55
         temperature = round(base_temp - lapse_cooling, 3)
 
-        # Humidity: Oceanic proximity - continuous leeward mountain rain shadow
-        dist_from_ocean = clamped_x
-        base_humidity = 1.0 - (dist_from_ocean * 0.95)
-        
-        # Continuous Leeward Rain Shadow
-        leeward_dist = max(0.0, clamped_x - 0.70)
-        rain_shadow = 0.30 * (1.0 - math.exp(-4.0 * leeward_dist)) * max(0.0, altitude - 0.15)
-        humidity = round(max(0.05, base_humidity - rain_shadow), 3)
+       # True Oceanic Proximity: Distance to nearest water body (West Ocean, Inland Sea, or East Ocean)
+        dist_to_water = min(clamped_x, abs(clamped_x - 0.78), 1.0 - clamped_x)
+        base_humidity = 1.0 - (dist_to_water * 1.40)
+
+        # Rain shadow applies only to leeward continental plains (x between 0.68 and 0.75)
+        is_leeward_plain = (0.68 <= clamped_x <= 0.75 and altitude < 0.30)
+        rain_shadow = 0.25 if is_leeward_plain else 0.0
+
+        # Island arc and coastal zones remain richly maritime
+        is_island = (clamped_x >= 0.82 and altitude >= 0.22)
+        min_hum = 0.65 if is_island else (0.45 if dist_to_water < 0.12 else 0.05)
+        humidity = round(max(min_hum, base_humidity - rain_shadow), 3)
 
         # Vegetation
-        veg_score = (humidity * 0.70) + (temperature * 0.30) - (altitude * 0.40)
-        vegetation = round(max(0.05, min(0.95, veg_score)), 3)
+        veg_score = (humidity * 0.70) + (max(0.0, temperature) * 0.30) - (altitude * 0.40)
+        vegetation = round(max(0.01, min(0.99, veg_score)), 3)
 
-        # Ambient Acoustic Noise (coastal surf, mountain ridge wind)
+        # Ambient Noise
         ridge_wind = altitude * 0.65
         surf_noise = max(0.0, (0.25 - clamped_x) * 2.0) if clamped_x < 0.25 else 0.0
-        ambient_noise = round(min(0.95, ridge_wind + surf_noise), 3)
+        ambient_noise = round(min(0.99, ridge_wind + surf_noise), 3)
 
         return Environment(
             temperature=temperature,

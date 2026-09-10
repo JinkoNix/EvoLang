@@ -151,6 +151,53 @@ class Language:
         self.contacts: dict[Language, float] = {}
         self._cached_grammar_paradigm = None
 
+
+    def populate_default_phonemes(
+        self,
+        vowel_points: Sequence[tuple[float, float, float] | Phoneme] | None = None,
+        consonant_points: Sequence[tuple[float, float, float] | Phoneme] | None = None,
+    ) -> None:
+        """
+        Initializes the proto-phonemic inventory.
+        Can be customized by passing coordinate tuples or Phoneme objects.
+        Defaults to the universal 5-vowel cardinal grid and balanced baseline consonants.
+        """
+        # Default 5-Vowel Cardinal Grid: /i, u, e, o, a/
+        default_vowels = vowel_points or [
+            (6.0, 0.0, 0.0),  # /i/
+            (6.0, 2.0, 1.0),  # /u/
+            (4.0, 0.0, 0.0),  # /e/
+            (4.0, 2.0, 1.0),  # /o/
+            (0.0, 1.0, 0.0),  # /a/
+        ]
+
+        # Default Balanced Consonants: p, b, t, d, k, g, f, v, s, z, ʃ, x, h, m, n, l, w
+        default_consonants = consonant_points or [
+            (0.0, 0.0, 0.0), (0.0, 0.0, 1.0),  # p, b
+            (3.0, 0.0, 0.0), (3.0, 0.0, 1.0),  # t, d
+            (7.0, 0.0, 0.0), (7.0, 0.0, 1.0),  # k, g
+            (1.0, 4.0, 0.0), (1.0, 4.0, 1.0),  # f, v
+            (3.0, 4.0, 0.0), (3.0, 4.0, 1.0),  # s, z
+            (4.0, 4.0, 0.0),                   # ʃ
+            (7.0, 4.0, 0.0),                   # x
+            (10.0, 4.0, 0.0),                  # h
+            (0.0, 1.0, 1.0), (3.0, 1.0, 1.0),  # m, n
+            (3.0, 7.0, 1.0), (0.0, 7.0, 1.0),  # l, w
+        ]
+
+        for pt in default_vowels:
+            if isinstance(pt, Phoneme):
+                self.add_phoneme(pt)
+            else:
+                self.add_phoneme(Phoneme(PhonemeKind.VOWEL, pt))
+
+        for pt in default_consonants:
+            if isinstance(pt, Phoneme):
+                self.add_phoneme(pt)
+            else:
+                self.add_phoneme(Phoneme(PhonemeKind.CONSONANT, pt))
+    
+    
     @property
     def cultural_inertia(self) -> float:
         """Layer 2 Derived Cultural Inertia (Purism): V^1.4 * S / (1 + D)."""
@@ -203,6 +250,10 @@ class Language:
         grammatical_concreteness_cutoff = 0.12 + (1.0 - pop) * 0.12
         k_cap = 2500.0 * (1.0 + 15.0 * (pop ** 1.6) * (1.0 - min(1.0, self.cultural_inertia) * 0.40))
 
+        # Continuous Articulatory Impedance Drag (Zipf 1935 / Martinet 1955)
+        # Purist cultures (high inertia) tolerate difficult words; dynamic cultures penalize friction heavily
+        k_effort = 0.35 / (1.0 + 0.60 * self.cultural_inertia)
+
         raw_loads: list[tuple[float, Word]] = []
         for word in living_words:
             u_base = 3.50 if word.is_proto_root else 1.00
@@ -212,7 +263,21 @@ class Language:
             children_count = family_tree_counts.get(word.derivation.root_family_id, 1)
             hub_bonus = 1.0 + 0.40 * math.tanh(children_count / 6.0)
 
-            score = u_base * (relevance ** 1.4) * (6.0 if is_functional else 1.0) * hub_bonus
+            # Calculate articulatory difficulty of the word
+            p_len = len(word.phonemes)
+            if p_len >= 2:
+                transition_sum = sum(
+                    ArticulatoryEnergyModel.transition_cost(word.phonemes[j], word.phonemes[j+1])
+                    for j in range(p_len - 1)
+                )
+                markedness_sum = sum(p.weight for p in word.phonemes)
+                art_difficulty = (transition_sum + markedness_sum) / float(p_len)
+            else:
+                art_difficulty = 1.00
+
+            # Communicative load: high articulatory difficulty creates frequency drag unless eroded!
+            effort_drag = 1.0 + k_effort * max(0.0, art_difficulty - 1.20)
+            score = (u_base * (relevance ** 1.4) * (6.0 if is_functional else 1.0) * hub_bonus) / effort_drag
             raw_loads.append((score, word))
 
         raw_loads.sort(key=lambda x: x[0], reverse=True)
@@ -428,10 +493,14 @@ class Language:
         noise = getattr(self.environment, "ambient_noise", 0.2) if self.environment else 0.2
         pop = getattr(self.environment, "population", 0.5) if self.environment else 0.5
 
-        # 1. Environmental Acoustic Potentials
-        rho_air = math.exp(-2.40 * max(0.0, alt)) * (1.0 - 0.20 * (temp - 0.50))
+        # Gas Law Air Density: Strictly real & positive across all temperatures (-100 to +1000)
+        rho_air = math.exp(-2.40 * max(0.0, alt)) * math.exp(-0.25 * (temp - 0.50))
         p_ejective_field = max(0.0, 0.42 - rho_air) ** 2.2 * 0.35
         p_ejective_relax = (1.0 / (1.0 + math.exp(-7.0 * (rho_air - 0.42)))) * 0.40
+
+        p_implosive_field = max(0.0, hum - 0.55) * 0.30
+        aridity_gradient = max(0.0, 0.50 - hum) * (1.0 + max(0.0, temp) * 0.50)
+        canopy_damping = max(0.0, veg * 0.65 + hum * 0.35 - 0.40)
 
         savannah_dist_sq = (
             ((temp - 0.70) / 0.22) ** 2 +
@@ -444,9 +513,6 @@ class Language:
         click_propensity = math.exp(-savannah_dist_sq / 2.0)
         click_relaxation = max(0.0, 0.30 - click_propensity) * 1.50
 
-        p_implosive_field = max(0.0, hum - 0.55) * 0.30
-        aridity_gradient = max(0.0, 0.50 - hum) * (1.0 + temp * 0.50)
-        canopy_damping = max(0.0, veg * 0.65 + hum * 0.35 - 0.40)
         d_v_min = self.profile.d_min_vowel
 
         for word in words_dict.values():
