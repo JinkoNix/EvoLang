@@ -77,21 +77,20 @@ class Language:
         phonemes: Sequence[Phoneme] | None = None,
         profile: LanguageProfile | None = None,
         environment=None,
+        population: float = 0.50,
     ):
         self.name = name
         self.environment = environment
+        self.population = float(population)
 
-        # -------------------------------------------------------------
-        # Complete Layer 2 Cultural Genome Initialization
-        # Anchored in Physical Environment + Human Subsistence Modes
-        # (Arable Agriculture, Pastoral Herding, Steppe Mobility, Imperial Defense)
-        # -------------------------------------------------------------
         alt = getattr(self.environment, "altitude", 0.0) if self.environment else 0.0
-        pop = getattr(self.environment, "population", 0.5) if self.environment else 0.5
         hum = getattr(self.environment, "humidity", 0.5) if self.environment else 0.5
-        veg = getattr(self.environment, "vegetation", 0.5) if self.environment else 0.5
         temp = getattr(self.environment, "temperature", 0.5) if self.environment else 0.5
         noise = getattr(self.environment, "ambient_noise", 0.2) if self.environment else 0.2
+        pop = self.population
+
+        # Emergent vegetation
+        veg = self.environment.emergent_vegetation(population=pop) if hasattr(self.environment, "emergent_vegetation") else 0.50
         aridity = 1.0 - hum
 
         # 1. Human Subsistence & Ecological Coupling Functions
@@ -246,7 +245,7 @@ class Language:
         
         attn = self.cultural_attention
         attn_sum = max(0.01, sum(attn))
-        pop = getattr(self.environment, "population", 0.5) if self.environment else 0.5
+        pop = self.population
         grammatical_concreteness_cutoff = 0.12 + (1.0 - pop) * 0.12
         k_cap = 2500.0 * (1.0 + 15.0 * (pop ** 1.6) * (1.0 - min(1.0, self.cultural_inertia) * 0.40))
 
@@ -486,12 +485,12 @@ class Language:
         - Complete Closed-Loop Manner Transitions (Lateral Fricatives mn=5 lenite to /l/ or /z/).
         - Symmetrical Boundary Potential Field & Universal Aerodynamic Voicing Equilibrium.
         """
+        pop = self.population
         alt = getattr(self.environment, "altitude", 0.0) if self.environment else 0.0
         hum = getattr(self.environment, "humidity", 0.5) if self.environment else 0.5
         temp = getattr(self.environment, "temperature", 0.5) if self.environment else 0.5
-        veg = getattr(self.environment, "vegetation", 0.5) if self.environment else 0.5
         noise = getattr(self.environment, "ambient_noise", 0.2) if self.environment else 0.2
-        pop = getattr(self.environment, "population", 0.5) if self.environment else 0.5
+        veg = self.environment.emergent_vegetation(population=pop, cultural_attention=self.cultural_attention) if hasattr(self.environment, "emergent_vegetation") else 0.50
 
         # Gas Law Air Density: Strictly real & positive across all temperatures (-100 to +1000)
         rho_air = math.exp(-2.40 * max(0.0, alt)) * math.exp(-0.25 * (temp - 0.50))
@@ -936,7 +935,7 @@ class Language:
         self._cached_grammar_paradigm = None
 
         if self.profile.tone_tier > 0 and current_generation % 50 == 0:
-            pop = getattr(self.environment, "population", 0.5) if self.environment else 0.5
+            pop = self.population
             if pop > 0.75 and self.profile.tone_tier > 2 and (random.random() > self.cultural_inertia * 0.60):
                 self.profile = self.profile._replace(
                     tone_tier=max(2, self.profile.tone_tier - 1)
@@ -946,12 +945,12 @@ class Language:
         # Continuous Ornstein-Uhlenbeck Cultural Evolution
         # Continuous Environmental Gravity + Inertia-Resisted Stochastic Drift + Finite Attention Budget
         # -------------------------------------------------------------
+        pop = self.population
         alt = getattr(self.environment, "altitude", 0.0) if self.environment else 0.0
-        pop = getattr(self.environment, "population", 0.5) if self.environment else 0.5
         hum = getattr(self.environment, "humidity", 0.5) if self.environment else 0.5
-        veg = getattr(self.environment, "vegetation", 0.5) if self.environment else 0.5
         temp = getattr(self.environment, "temperature", 0.5) if self.environment else 0.5
         noise = getattr(self.environment, "ambient_noise", 0.2) if self.environment else 0.2
+        veg = self.environment.emergent_vegetation(population=pop, cultural_attention=self.cultural_attention) if hasattr(self.environment, "emergent_vegetation") else 0.50
         aridity = 1.0 - hum
 
         # Subsistence & Ecological Couplers
@@ -1245,7 +1244,7 @@ class Language:
         unique_phonemes: dict[str, Phoneme] = {p.ipa: p for w in self.words.values() for p in w.phonemes}
         core_inventory: dict[str, Phoneme] = {}
 
-        pop = getattr(self.environment, "population", 0.5) if self.environment else 0.5
+        pop = self.population
         d_v_min = self.profile.d_min_vowel
         d_c_min = self.profile.d_min_consonant
 
@@ -1321,6 +1320,7 @@ class Language:
             vowels=self.vowels,
             env=self.environment,
             profile=self.profile,
+            population=self.population,
         )
         for w in generated_words:
             self.words[w.id] = w
@@ -1336,7 +1336,7 @@ class Language:
             cultural_attention=self.cultural_attention,
         ) if env else None
 
-        daughter = Language(name=daughter_name, profile=profile, environment=env)
+        daughter = Language(name=daughter_name, profile=profile, environment=env, population=self.population)
         daughter.phonemes = {k: p.drift() for k, p in self.phonemes.items()}
         for word in self.words.values():
             daughter.add_word(word.copy())

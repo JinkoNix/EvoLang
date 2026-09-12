@@ -2,19 +2,21 @@
 visualizer.py — Minimalist Real-Time Browser Visualizer for EvoLang.
 Uses Python's standard library (zero pip dependencies required).
 Run with: python visualizer.py
-Then open: http://localhost:8000
+Then open: http://localhost:8008
 """
 
 from __future__ import annotations
 
 import json
-import mimetypes
+import math
 import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 from language import Language
 from world_map import ContinuousWorldMap, Environment, TerrainField
+from grammar import GrammarEngine
+from translator import SemanticTranslator
 
 
 # =====================================================================
@@ -30,7 +32,7 @@ class WorldSimulationState:
         self._precompute_terrain_grid()
 
     def _precompute_terrain_grid(self, resolution: int = 50):
-        """Precomputes a low-res terrain matrix for fast canvas background rendering."""
+        """Precomputes pristine climax planetary grid for fast canvas background rendering."""
         self.terrain_grid = []
         for row in range(resolution):
             y = row / float(resolution - 1)
@@ -38,36 +40,49 @@ class WorldSimulationState:
             for col in range(resolution):
                 x = col / float(resolution - 1)
                 env = self.terrain.sample_environment(x, y)
+                climax_veg = env.emergent_vegetation(population=0.0)
                 grid_row.append({
                     "alt": round(env.altitude, 2),
                     "temp": round(env.temperature, 2),
                     "hum": round(env.humidity, 2),
-                    "veg": round(env.vegetation, 2),
+                    "veg": round(climax_veg, 2),
                 })
             self.terrain_grid.append(grid_row)
 
     def _init_default_world(self):
         """Spawns 3 diverse archetype civilizations across the map."""
         # 1. Romano-Italic in Mediterranean Plains (x=0.45, y=0.55)
-        env_it = self.terrain.sample_environment(0.45, 0.55, population=0.50)
-        prof_it = env_it.generate_profile(name="Romano-Italic Profile", initial_head_directionality=0.50)
-        lang_it = Language("Romano-Italic", profile=prof_it, environment=env_it)
+        env_it = self.terrain.sample_environment(0.45, 0.55)
+        prof_it = env_it.generate_profile(
+            name="Romano-Italic Profile", 
+            initial_head_directionality=0.50, 
+            population=0.50
+        )
+        lang_it = Language("Romano-Italic", profile=prof_it, environment=env_it, population=0.50)
         lang_it.populate_default_phonemes()
         lang_it.generate_lexicon()
         self.world.spawn_civilization("Romano-Italic", lang_it, x=0.45, y=0.55, population=0.50)
 
-        # 2. Yamato-Japonic in Maritime Coast (x=0.85, y=0.40)
-        env_jp = self.terrain.sample_environment(0.85, 0.40, population=0.40)
-        prof_jp = env_jp.generate_profile(name="Yamato-Japonic Profile", initial_head_directionality=0.18)
-        lang_jp = Language("Yamato-Japonic", profile=prof_jp, environment=env_jp)
+        # 2. Yamato-Japonic in Maritime Island Arc (x=0.85, y=0.40)
+        env_jp = self.terrain.sample_environment(0.85, 0.40)
+        prof_jp = env_jp.generate_profile(
+            name="Yamato-Japonic Profile", 
+            initial_head_directionality=0.18, 
+            population=0.40
+        )
+        lang_jp = Language("Yamato-Japonic", profile=prof_jp, environment=env_jp, population=0.40)
         lang_jp.populate_default_phonemes()
         lang_jp.generate_lexicon()
         self.world.spawn_civilization("Yamato-Japonic", lang_jp, x=0.85, y=0.40, population=0.40)
 
         # 3. Alpine-Highlands in Mountain Ridge (x=0.65, y=0.80)
-        env_alp = self.terrain.sample_environment(0.65, 0.80, population=0.25)
-        prof_alp = env_alp.generate_profile(name="Alpine-Highlands Profile", initial_head_directionality=0.55)
-        lang_alp = Language("Alpine-Highlands", profile=prof_alp, environment=env_alp)
+        env_alp = self.terrain.sample_environment(0.65, 0.80)
+        prof_alp = env_alp.generate_profile(
+            name="Alpine-Highlands Profile", 
+            initial_head_directionality=0.55, 
+            population=0.25
+        )
+        lang_alp = Language("Alpine-Highlands", profile=prof_alp, environment=env_alp, population=0.25)
         lang_alp.populate_default_phonemes()
         lang_alp.generate_lexicon()
         self.world.spawn_civilization("Alpine-Highlands", lang_alp, x=0.65, y=0.80, population=0.25)
@@ -77,8 +92,12 @@ class WorldSimulationState:
     def step(self, epochs: int = 1):
         for _ in range(epochs):
             self.world.step_epoch(reduction_strength=0.75, enable_neologisms=True, parallel=False)
+            
+            # Log significant geopolitical milestones
             if self.world.current_epoch % 25 == 0:
-                self.event_log.append(f"Epoch {self.world.current_epoch}: Climatic sound shifts and lexical pruning complete.")
+                self.event_log.append(
+                    f"Epoch {self.world.current_epoch}: Demographics & language evolution cycle complete."
+                )
             if len(self.event_log) > 40:
                 self.event_log = self.event_log[-40:]
 
@@ -88,13 +107,15 @@ class WorldSimulationState:
             stats = civ.language.get_phoneme_distribution_stats()
             attn = civ.language.cultural_attention
             env = civ.environment
+            actual_veg = env.emergent_vegetation(
+                population=civ.population, 
+                cultural_attention=attn
+            )
 
-            from grammar import GrammarEngine
-            from translator import SemanticTranslator
             paradigm = GrammarEngine.discover_grammar_system(civ.language)
             alignment = GrammarEngine.get_alignment_system(civ.language)
 
-            # 1. Full Noun Classes & Declension Tables
+            # 1. Full Noun Classes & Declensions
             noun_classes_data = []
             living_nouns = [w for w in civ.language.words.values() if GrammarEngine.get_part_of_speech(w) == "Noun"]
             
@@ -123,7 +144,7 @@ class WorldSimulationState:
                     "declension": decl
                 })
 
-            # 2. Full Verb Classes & Conjugation Tables
+            # 2. Full Verb Classes & Conjugations
             verb_classes_data = []
             living_verbs = [w for w in civ.language.words.values() if GrammarEngine.get_part_of_speech(w) == "Verb"]
             
@@ -156,7 +177,7 @@ class WorldSimulationState:
                     "conjugation": conj
                 })
 
-            # 3. Searchable Living Lexicon Sample
+            # 3. Compact Lexicon Sample
             sorted_words = sorted(civ.language.words.values(), key=lambda w: w.usage_frequency, reverse=True)[:60]
             lexicon_sample = [
                 {
@@ -171,7 +192,7 @@ class WorldSimulationState:
                 for w in sorted_words
             ]
 
-            # 4. Tonal Status
+            # 4. Tonal Status Description
             tone_tier = civ.language.profile.tone_tier
             if tone_tier == 0:
                 tone_desc = "Non-Tonal (Stress-timed)"
@@ -184,6 +205,10 @@ class WorldSimulationState:
             else:
                 tone_desc = "Tone Tier 8: 8-Tone Contour System (˥, ˧, ˩, ˧˥, ˩˧, ˥˩, ˨˩, ˨˩˦)"
 
+            # Pick a sample word safely
+            words_list = list(civ.language.words.values())
+            sample_word_form = words_list[len(words_list) // 2].form if words_list else "N/A"
+
             civs_data.append({
                 "name": name,
                 "x": civ.x,
@@ -192,7 +217,7 @@ class WorldSimulationState:
                 "alt": round(env.altitude, 2),
                 "hum": round(env.humidity, 2),
                 "temp": round(env.temperature, 2),
-                "veg": round(env.vegetation, 2),
+                "veg": round(actual_veg, 2),
                 "word_count": len(civ.language.words),
                 "cv_ratio": stats.get("cv_ratio", 1.0),
                 "entropy": stats.get("entropy_evenness", 1.0),
@@ -211,16 +236,59 @@ class WorldSimulationState:
                 "top_vowels": list(stats.get("vowels", {}).items())[:6],
                 "vowels": sorted(list(set(p.ipa for p in civ.language.vowels))),
                 "consonants": sorted(list(set(p.ipa for p in civ.language.consonants))),
+                "sample_word": sample_word_form,
+                "sample_noun": {"form": sample_w.form, "gloss": SemanticTranslator.translate(sample_w, civ.language)},
+                "sample_verb": {"form": sample_v.form, "gloss": SemanticTranslator.translate(sample_v, civ.language)},
                 "noun_classes": noun_classes_data,
                 "verb_classes": verb_classes_data,
                 "lexicon": lexicon_sample,
+                "territory_radius": getattr(civ, "territory_radius", 0.08),
+                "food_capacity": getattr(civ, "food_capacity", 0.50),
+                "food_deficit": getattr(civ, "food_deficit", 0.00),
+                "lineage": getattr(civ, "lineage", name),
             })
+
+        live_terrain = []
+        resolution = len(self.terrain_grid)
+        claims = getattr(self.world, "territory_grid", {})
+        densities = getattr(self.world, "density_grid", {})
+
+        for r in range(resolution):
+            grid_row = []
+            gy = r / float(resolution - 1)
+            for c in range(resolution):
+                gx = c / float(resolution - 1)
+                base_cell = self.terrain_grid[r][c]
+                alt = base_cell["alt"]
+                climax_veg = base_cell["veg"]
+                cell_owner = claims.get((r, c), None)
+                cell_density = densities.get((r, c), 0.0)
+
+                if alt <= 0.0:
+                    grid_row.append({
+                        "alt": alt, "temp": base_cell["temp"], "hum": base_cell["hum"], 
+                        "veg": 0.0, "owner": None, "density": 0.0
+                    })
+                else:
+                    # Deforestation scales with local population density on that exact pixel!
+                    actual_veg = climax_veg * math.exp(-cell_density * 1.80) if cell_owner else climax_veg
+                    grid_row.append({
+                        "alt": alt,
+                        "temp": base_cell["temp"],
+                        "hum": base_cell["hum"],
+                        "veg": round(max(0.02, actual_veg), 2),
+                        "owner": cell_owner,
+                        "density": cell_density,
+                    })
+            live_terrain.append(grid_row)
 
         return {
             "epoch": self.world.current_epoch,
             "civs": civs_data,
+            "trade_routes": self.world.active_trade_routes,
+            "conflicts": self.world.active_conflicts,
             "events": self.event_log[-15:],
-            "terrain": self.terrain_grid,
+            "terrain": live_terrain,
         }
 
 
@@ -275,7 +343,7 @@ class EvoLangHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Endpoint not found")
 
 
-def start_server(port: int = 8000):
+def start_server(port: int = 8008):
     server_address = ("", port)
     httpd = HTTPServer(server_address, EvoLangHandler)
     print(f"\n==================================================================")

@@ -258,28 +258,141 @@
       document.getElementById(`tab-${tabId}`).classList.add('active');
     }
 
+    function safeSet(id, val, isHtml = false) {
+      const el = document.getElementById(id);
+      if (el) {
+        if (isHtml) el.innerHTML = val;
+        else el.innerText = val;
+      }
+    }
+
     function updateUI() {
       if (!worldState) return;
-      document.getElementById('epochDisplay').innerText = `Epoch: ${worldState.epoch}`;
 
+      safeSet('epochDisplay', `Epoch: ${worldState.epoch}`);
+      
+      // Update Event Ticker
       if (worldState.events && worldState.events.length > 0) {
-        document.getElementById('tickerDisplay').innerHTML = `<span>Latest Event:</span> ${worldState.events[worldState.events.length - 1]}`;
+        safeSet('tickerDisplay', `<span>Latest Event:</span> ${worldState.events[worldState.events.length - 1]}`, true);
       }
 
+      // Update Civilization Dropdown
       const select = document.getElementById('civSelect');
-      const prevSelected = selectedCivName || (worldState.civs[0] ? worldState.civs[0].name : null);
-      select.innerHTML = '';
-      worldState.civs.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c.name;
-        opt.innerText = `${c.name} (${c.word_count} words)`;
-        if (c.name === prevSelected) opt.selected = true;
-        select.appendChild(opt);
-      });
+      if (select && worldState.civs) {
+        const prevSelected = selectedCivName || (worldState.civs[0] ? worldState.civs[0].name : null);
+        select.innerHTML = '';
+        worldState.civs.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.name;
+          opt.innerText = `${c.name} (${c.word_count || 0} words)`;
+          if (c.name === prevSelected) opt.selected = true;
+          select.appendChild(opt);
+        });
+        selectedCivName = select.value;
+      }
 
-      selectedCivName = select.value;
-      updateInspector();
-      renderWorld();
+      // ALWAYS render the world map first so the canvas never freezes!
+      try {
+        renderWorld();
+      } catch (err) {
+        console.error("Map rendering error:", err);
+      }
+
+      // Update inspector safely inside a guarded block
+      try {
+        updateInspector();
+      } catch (err) {
+        console.error("Inspector error:", err);
+      }
+    }
+
+    function updateInspector() {
+      if (!worldState || !worldState.civs || worldState.civs.length === 0) return;
+      const civ = worldState.civs.find(c => c.name === selectedCivName) || worldState.civs[0];
+      if (!civ) return;
+
+      // Tab 1: Overview
+      safeSet('dispPop', `${Math.round((civ.population || 0) * 100000).toLocaleString()} (Pop: ${civ.population})`);
+      safeSet('dispClimate', `Alt:${civ.alt ?? '-'}, Hum:${civ.hum ?? '-'}, Temp:${civ.temp ?? '-'}`);
+      safeSet('dispWordCount', `${civ.word_count ?? '-'} words`);
+      safeSet('dispSyntax', `${civ.word_order ?? '-'} (h=${civ.head_dir ?? '-'})`);
+      safeSet('dispAlign', civ.alignment ?? '-');
+      safeSet('dispPurism', civ.cultural_inertia ?? '-');
+      safeSet('dispCV', civ.cv_ratio ?? '-');
+      safeSet('dispEntropy', civ.entropy ?? '-');
+
+      // Sample Word
+      safeSet('sampleWord', `/${formatIpa(civ.sample_word || (civ.sample_noun?.form || ''))}/`, true);
+
+      // Tab 2: 7D Genome
+      const gNames = ["Concreteness", "Animacy", "Valence", "Potency", "Dynamism", "Sociality", "Extension"];
+      const gContainer = document.getElementById('genomeBars');
+      if (gContainer && civ.attention) {
+        gContainer.innerHTML = civ.attention.map((val, i) => `
+          <div class="genome-bar-row">
+            <span class="genome-label">${gNames[i]}:</span>
+            <div class="genome-progress"><div class="genome-fill" style="width: ${(val / 2.5) * 100}%"></div></div>
+            <span style="width: 32px; font-weight: bold; text-align: right;">${val.toFixed(2)}</span>
+          </div>
+        `).join('');
+      }
+
+      // Tab 3: Phonology
+      const vContainer = document.getElementById('vowelTags');
+      if (vContainer && civ.vowels) {
+        vContainer.innerHTML = civ.vowels.map(v => `<span class="tag">/${formatIpa(v)}/</span>`).join('');
+      }
+      const cContainer = document.getElementById('consonantTags');
+      if (cContainer && civ.consonants) {
+        cContainer.innerHTML = civ.consonants.map(c => `<span class="tag">/${c}/</span>`).join('');
+      }
+      
+      const topC = document.getElementById('topConsList');
+      if (topC && civ.top_consonants) {
+        topC.innerHTML = civ.top_consonants.map(item => `/${item[0]}/ (${item[1]}%)`).join(' • ');
+      }
+      const topV = document.getElementById('topVowList');
+      if (topV && civ.top_vowels) {
+        topV.innerHTML = civ.top_vowels.map(item => `/${formatIpa(item[0])}/ (${item[1]}%)`).join(' • ');
+      }
+
+      // Tab 4: Grammar Profile
+      safeSet('gramSyntax', `${civ.word_order ?? '-'} (Head-Dir: ${civ.head_dir ?? '-'})`);
+      const sIdx = civ.synthesis_index ?? 0.50;
+      safeSet('gramSynthesis', `${sIdx < 0.35 ? 'Analytic / Isolating' : (sIdx > 0.65 ? 'Agglutinative / Synthetic' : 'Synthetic / Fusional')} (S_idx: ${sIdx})`);
+      safeSet('gramAlign', civ.alignment ?? '-');
+      safeSet('gramTones', formatIpa(civ.tone_desc || 'Non-Tonal'), true);
+      safeSet('gramNumber', civ.number_system ?? '-');
+      safeSet('gramArticles', civ.article_system ?? '-');
+      safeSet('gramNumerals', civ.numeral_system ?? '-');
+
+      // Populate Noun Class Dropdown
+      const nSelect = document.getElementById('nounClassSelect');
+      if (nSelect && civ.noun_classes && civ.noun_classes.length > 0) {
+        nSelect.innerHTML = '';
+        civ.noun_classes.forEach((nc, idx) => {
+          const opt = document.createElement('option');
+          opt.value = idx;
+          opt.innerText = nc.label;
+          nSelect.appendChild(opt);
+        });
+        renderNounTable(0);
+      }
+
+      // Populate Verb Class Dropdown
+      const vSelect = document.getElementById('verbClassSelect');
+      if (vSelect && civ.verb_classes && civ.verb_classes.length > 0) {
+        vSelect.innerHTML = '';
+        civ.verb_classes.forEach((vc, idx) => {
+          const opt = document.createElement('option');
+          opt.value = idx;
+          opt.innerText = `${vc.label}: ${vc.aspect} (${vc.strategy})`;
+          vSelect.appendChild(opt);
+        });
+        renderVerbTable(0);
+      }
+
+      filterLexicon();
     }
 
     function selectCiv(name) {
@@ -295,103 +408,37 @@
       return text.replace(/([˥˦˧˨˩]+)/g, '<span style="color:#f2cc60; font-weight:normal; text-shadow:0 0 4px rgba(242,204,96,0.35);">$1</span>');
     }
 
-    // In updateInspector(), update the dropdown and sample word:
-    function updateInspector() {
-      if (!worldState) return;
-      const civ = worldState.civs.find(c => c.name === selectedCivName) || worldState.civs[0];
-      if (!civ) return;
-
-      // Tab 1: Overview
-      document.getElementById('dispPop').innerText = `${Math.round(civ.population * 100000).toLocaleString()} (Pop: ${civ.population})`;
-      document.getElementById('dispClimate').innerText = `Alt:${civ.alt}, Hum:${civ.hum}, Temp:${civ.temp}`;
-      document.getElementById('dispWordCount').innerText = `${civ.word_count} words`;
-      document.getElementById('dispSyntax').innerText = `${civ.word_order} (h=${civ.head_dir})`;
-      document.getElementById('dispAlign').innerText = `${civ.alignment}`;
-      document.getElementById('dispPurism').innerText = `${civ.cultural_inertia}`;
-      document.getElementById('dispCV').innerText = `${civ.cv_ratio}`;
-      document.getElementById('dispEntropy').innerText = `${civ.entropy}`;
-
-      // Sample Word card with tone formatting
-      document.getElementById('sampleWord').innerHTML = `/${formatIpa(civ.sample_word)}/`;
-
-      // Tab 2: 7D Genome
-      const gNames = ["Concreteness", "Animacy", "Valence", "Potency", "Dynamism", "Sociality", "Extension"];
-      const gContainer = document.getElementById('genomeBars');
-      gContainer.innerHTML = civ.attention.map((val, i) => `
-        <div class="genome-bar-row">
-          <span class="genome-label">${gNames[i]}:</span>
-          <div class="genome-progress"><div class="genome-fill" style="width: ${(val / 2.5) * 100}%"></div></div>
-          <span style="width: 32px; font-weight: bold; text-align: right;">${val.toFixed(2)}</span>
-        </div>
-      `).join('');
-
-      // Tab 3: Phonology
-      document.getElementById('vowelTags').innerHTML = civ.vowels.map(v => `<span class="tag">/${formatIpa(v)}/</span>`).join('');
-      document.getElementById('consonantTags').innerHTML = civ.consonants.map(c => `<span class="tag">/${c}/</span>`).join('');
-      document.getElementById('topConsList').innerHTML = civ.top_consonants.map(item => `/${item[0]}/ (${item[1]}%)`).join(' • ');
-      document.getElementById('topVowList').innerHTML = civ.top_vowels.map(item => `/${formatIpa(item[0])}/ (${item[1]}%)`).join(' • ');
-
-      // Tab 4: Grammar Profile
-      document.getElementById('gramSyntax').innerText = `${civ.word_order} (Head-Dir: ${civ.head_dir})`;
-      document.getElementById('gramSynthesis').innerText = `${civ.synthesis_index < 0.35 ? 'Analytic / Isolating' : (civ.synthesis_index > 0.65 ? 'Agglutinative / Synthetic' : 'Synthetic / Fusional')} (S_idx: ${civ.synthesis_index})`;
-      document.getElementById('gramAlign').innerText = civ.alignment;
-      document.getElementById('gramTones').innerHTML = formatIpa(civ.tone_desc);
-      document.getElementById('gramNumber').innerText = civ.number_system;
-      document.getElementById('gramArticles').innerText = civ.article_system;
-      document.getElementById('gramNumerals').innerText = civ.numeral_system;
-
-      // Clean Noun Class Selector (Eliminates "Class 1 (1)" repetition!)
-      const nSelect = document.getElementById('nounClassSelect');
-      nSelect.innerHTML = '';
-      civ.noun_classes.forEach((nc, idx) => {
-        const opt = document.createElement('option');
-        opt.value = idx;
-        opt.innerText = nc.label;  // Cleanly displays "Class 1 (Animate-Extended)"
-        nSelect.appendChild(opt);
-      });
-      renderNounTable(0);
-
-      // Verb Class Selector
-      const vSelect = document.getElementById('verbClassSelect');
-      vSelect.innerHTML = '';
-      civ.verb_classes.forEach((vc, idx) => {
-        const opt = document.createElement('option');
-        opt.value = idx;
-        opt.innerText = `${vc.label}: ${vc.aspect} (${vc.strategy})`;
-        vSelect.appendChild(opt);
-      });
-      renderVerbTable(0);
-
-      filterLexicon();
-    }
-
     function renderNounTable(classIdx) {
       if (!worldState) return;
       const civ = worldState.civs.find(c => c.name === selectedCivName) || worldState.civs[0];
-      if (!civ || !civ.noun_classes[classIdx]) return;
+      if (!civ || !civ.noun_classes || !civ.noun_classes[classIdx]) return;
 
       const nc = civ.noun_classes[classIdx];
-      document.getElementById('nounClassDetails').innerHTML = `${nc.label} | Marker: ${formatIpa(nc.marker)} | Sample: /${formatIpa(nc.sample_form)}/ «${nc.sample_gloss}»`;
+      safeSet('nounClassDetails', `${nc.label} | Marker: ${formatIpa(nc.marker)} | Sample: /${formatIpa(nc.sample_form)}/ «${nc.sample_gloss}»`, true);
       
       const dTable = document.getElementById('declTable');
-      dTable.innerHTML = '<tr><th>Paradigm Case</th><th>Surface Form</th></tr>';
-      for (const [k, v] of Object.entries(nc.declension)) {
-        dTable.innerHTML += `<tr><td>${k}</td><td style="color:#7ee787; font-weight:bold;">${formatIpa(v)}</td></tr>`;
+      if (dTable && nc.declension) {
+        dTable.innerHTML = '<tr><th>Paradigm Case</th><th>Surface Form</th></tr>';
+        for (const [k, v] of Object.entries(nc.declension)) {
+          dTable.innerHTML += `<tr><td>${k}</td><td style="color:#7ee787; font-weight:bold;">${formatIpa(v)}</td></tr>`;
+        }
       }
     }
 
     function renderVerbTable(classIdx) {
       if (!worldState) return;
       const civ = worldState.civs.find(c => c.name === selectedCivName) || worldState.civs[0];
-      if (!civ || !civ.verb_classes[classIdx]) return;
+      if (!civ || !civ.verb_classes || !civ.verb_classes[classIdx]) return;
 
       const vc = civ.verb_classes[classIdx];
-      document.getElementById('verbClassDetails').innerHTML = `${vc.label} | Stem: ${formatIpa(vc.thematic)} | Strategy: ${vc.strategy} | Sample: /${formatIpa(vc.sample_form)}/ «${vc.sample_gloss}»`;
+      safeSet('verbClassDetails', `${vc.label} | Stem: ${formatIpa(vc.thematic)} | Strategy: ${vc.strategy} | Sample: /${formatIpa(vc.sample_form)}/ «${vc.sample_gloss}»`, true);
 
       const cTable = document.getElementById('conjTable');
-      cTable.innerHTML = '<tr><th>TAM / Person</th><th>Surface Form</th></tr>';
-      for (const [k, v] of Object.entries(vc.conjugation)) {
-        cTable.innerHTML += `<tr><td>${k}</td><td style="color:#58a6ff; font-weight:bold;">${formatIpa(v)}</td></tr>`;
+      if (cTable && vc.conjugation) {
+        cTable.innerHTML = '<tr><th>TAM / Person</th><th>Surface Form</th></tr>';
+        for (const [k, v] of Object.entries(vc.conjugation)) {
+          cTable.innerHTML += `<tr><td>${k}</td><td style="color:#58a6ff; font-weight:bold;">${formatIpa(v)}</td></tr>`;
+        }
       }
     }
 
@@ -424,72 +471,151 @@
       const cellH = h / res;
       const layer = document.getElementById('layerSelect').value;
 
+      // Consistent Color Palette
+      const civColors = {
+        "Romano-Italic": { r: 88, g: 166, b: 255 },
+        "Yamato-Japonic": { r: 240, g: 136, b: 62 },
+        "Alpine-Highlands": { r: 210, g: 168, b: 255 },
+        "Default": { r: 126, g: 231, b: 135 }
+      };
+
+      // 1. Draw Underlying Planetary Terrain & Vegetation Layer
       for (let r = 0; r < res; r++) {
         for (let c = 0; c < res; c++) {
-          const val = grid[r][c][layer];
-          if (layer === 'alt') {
-            const lum = Math.floor(val * 180 + 30);
-            ctx.fillStyle = val < 0.25 ? `rgb(10, 40, ${Math.floor(val*600)+80})` : `rgb(${lum}, ${lum+20}, ${lum})`;
-          } else if (layer === 'hum') {
-            ctx.fillStyle = `rgb(20, ${Math.floor(val * 150 + 40)}, ${Math.floor(val * 220 + 30)})`;
-          } else if (layer === 'veg') {
-            ctx.fillStyle = `rgb(10, ${Math.floor(val * 200 + 30)}, 30)`;
+          const cell = grid[r][c];
+          const alt = cell.alt;
+          const val = cell[layer];
+
+          if (alt <= 0.0) {
+            // Blue Ocean Water
+            const depth = Math.max(0, Math.min(45, Math.floor(-alt * 90)));
+            ctx.fillStyle = `rgb(10, ${30 + depth}, ${120 + depth})`;
           } else {
-            ctx.fillStyle = `rgb(${Math.floor(val * 220 + 30)}, 40, 40)`;
+            if (layer === 'alt') {
+              const lum = Math.floor(val * 160 + 45);
+              ctx.fillStyle = `rgb(${lum}, ${lum + 15}, ${lum})`;
+            } else if (layer === 'hum') {
+              ctx.fillStyle = `rgb(20, ${Math.floor(val * 160 + 30)}, ${Math.floor(val * 220 + 40)})`;
+            } else if (layer === 'veg') {
+              if (alt >= 0.38 && val <= 0.20) {
+                // Granite Slate Gray Rock on Mountain Peaks
+                const rock = Math.floor(130 + alt * 35);
+                ctx.fillStyle = `rgb(${rock}, ${rock + 5}, ${rock + 10})`;
+              } else {
+                // Clearings (val <= 0.35) -> Golden-Tan Farmland; Untouched -> Lush Deep Green
+                const g = Math.floor(val * 130 + 30);
+                const red = Math.floor((1.0 - val) * 165 + 15);
+                const blue = Math.floor((1.0 - val) * 55 + 20);
+                ctx.fillStyle = `rgb(${red}, ${g}, ${blue})`;
+              }
+            } else {
+              ctx.fillStyle = `rgb(${Math.floor(val * 220 + 35)}, 45, 35)`;
+            }
           }
           ctx.fillRect(c * cellW, r * cellH, cellW + 1, cellH + 1);
         }
       }
 
-      const colors = ["#58a6ff", "#7ee787", "#f0883e", "#d2a8ff", "#ff7b72"];
-      worldState.civs.forEach((civ, i) => {
+      // 2. Overlay Semi-Transparent Cellular Territory & Crisp Perimeter Borders
+      for (let r = 0; r < res; r++) {
+        for (let c = 0; c < res; c++) {
+          const cell = grid[r][c];
+          if (!cell.owner) continue;
+
+          // Resolve color
+          let tc = civColors[cell.owner];
+          if (!tc) {
+            const matchKey = Object.keys(civColors).find(k => cell.owner.startsWith(k.split('-')[0]));
+            tc = matchKey ? civColors[matchKey] : civColors["Default"];
+          }
+
+          const density = cell.density || 0.1;
+          const alpha = 0.22 + (density * 0.25);  // Semi-transparent: underlying map is 100% visible!
+
+          ctx.fillStyle = `rgba(${tc.r}, ${tc.g}, ${tc.b}, ${alpha})`;
+          ctx.fillRect(c * cellW, r * cellH, cellW, cellH);
+
+          // Crisp Perimeter Border Stroke: Check 4 cardinal neighbors
+          ctx.strokeStyle = `rgba(${tc.r}, ${tc.g}, ${tc.b}, 0.85)`;
+          ctx.lineWidth = 1.2;
+
+          // Top edge
+          if (r === 0 || grid[r - 1][c].owner !== cell.owner) {
+            ctx.beginPath(); ctx.moveTo(c * cellW, r * cellH); ctx.lineTo((c + 1) * cellW, r * cellH); ctx.stroke();
+          }
+          // Bottom edge
+          if (r === res - 1 || grid[r + 1][c].owner !== cell.owner) {
+            ctx.beginPath(); ctx.moveTo(c * cellW, (r + 1) * cellH); ctx.lineTo((c + 1) * cellW, (r + 1) * cellH); ctx.stroke();
+          }
+          // Left edge
+          if (c === 0 || grid[r][c - 1].owner !== cell.owner) {
+            ctx.beginPath(); ctx.moveTo(c * cellW, r * cellH); ctx.lineTo(c * cellW, (r + 1) * cellH); ctx.stroke();
+          }
+          // Right edge
+          if (c === res - 1 || grid[r][c + 1].owner !== cell.owner) {
+            ctx.beginPath(); ctx.moveTo((c + 1) * cellW, r * cellH); ctx.lineTo((c + 1) * cellW, (r + 1) * cellH); ctx.stroke();
+          }
+        }
+      }
+
+      // 3. Draw Active Trade Corridors (Luminous Green Lines)
+      if (worldState.trade_routes) {
+        ctx.strokeStyle = "#7ee787bb";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        worldState.trade_routes.forEach(route => {
+          const c1 = worldState.civs.find(c => c.name === route[0]);
+          const c2 = worldState.civs.find(c => c.name === route[1]);
+          if (c1 && c2) {
+            ctx.beginPath();
+            ctx.moveTo(c1.x * w, c1.y * h);
+            ctx.lineTo(c2.x * w, c2.y * h);
+            ctx.stroke();
+          }
+        });
+        ctx.setLineDash([]);
+      }
+
+      // 4. Draw Active Conflict Fronts (Pulsing Red Lines)
+      if (worldState.conflicts) {
+        ctx.strokeStyle = "#ff7b72ee";
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([6, 3]);
+        worldState.conflicts.forEach(conflict => {
+          const c1 = worldState.civs.find(c => c.name === conflict[0]);
+          const c2 = worldState.civs.find(c => c.name === conflict[1]);
+          if (c1 && c2) {
+            ctx.beginPath();
+            ctx.moveTo(c1.x * w, c1.y * h);
+            ctx.lineTo(c2.x * w, c2.y * h);
+            ctx.stroke();
+          }
+        });
+        ctx.setLineDash([]);
+      }
+
+      // 5. Draw City Centroids & Settlement Nodes
+      worldState.civs.forEach(civ => {
         const cx = civ.x * w;
         const cy = civ.y * h;
-        const radius = Math.max(16, Math.sqrt(civ.population) * 70);
-        const color = colors[i % colors.length];
+        const isSelected = (civ.name === selectedCivName);
 
         ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.fillStyle = color + "22";
+        ctx.arc(cx, cy, isSelected ? 6.5 : 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = isSelected ? "#ffffff" : "#ffd33d";
         ctx.fill();
-        ctx.strokeStyle = color + "88";
-        ctx.lineWidth = (civ.name === selectedCivName) ? 3 : 1.5;
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 1.2;
         ctx.stroke();
 
-        ctx.beginPath();
-        ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-        ctx.fillStyle = (civ.name === selectedCivName) ? "#ffffff" : color;
-        ctx.fill();
-        ctx.strokeStyle = "#000";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        ctx.font = "bold 11px monospace";
+        ctx.font = isSelected ? "bold 11px monospace" : "10px monospace";
         ctx.fillStyle = "#ffffff";
         ctx.shadowColor = "#000000";
         ctx.shadowBlur = 4;
-        ctx.fillText(civ.name, cx + 10, cy + 4);
+        ctx.fillText(`${civ.name} (${Math.round(civ.population * 100)}k)`, cx + 8, cy + 3);
         ctx.shadowBlur = 0;
       });
     }
-
-    document.getElementById('worldCanvas').onclick = function(e) {
-      if (!worldState) return;
-      const rect = this.getBoundingClientRect();
-      const clickX = (e.clientX - rect.left) / this.width;
-      const clickY = (e.clientY - rect.top) / this.height;
-
-      let closestCiv = null;
-      let minDist = 999;
-      worldState.civs.forEach(c => {
-        const d = Math.sqrt((c.x - clickX)**2 + (c.y - clickY)**2);
-        if (d < minDist) { minDist = d; closestCiv = c; }
-      });
-
-      if (closestCiv && minDist < 0.18) {
-        selectCiv(closestCiv.name);
-      }
-    };
 
     fetchState();
   </script>

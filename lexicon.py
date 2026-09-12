@@ -331,6 +331,8 @@ class LexiconGenerator:
         vowels: Sequence[Phoneme],
         env=None,
         profile=None,
+        population: float = 0.50,
+        **kwargs,
     ) -> list[Word]:
         words: list[Word] = []
         used_forms: set[str] = set()
@@ -365,7 +367,7 @@ class LexiconGenerator:
         entities = [w for w in words if w.vector.concreteness >= 0.65]
         modulators = [w for w in words if w.vector.concreteness < 0.65]
 
-        pop = getattr(env, "population", 0.50) if env else 0.50
+        pop = population if population is not None else (getattr(env, "population", None) or 0.50)
         num_compounds = int(round(15 + (pop * 25)))
 
         for _ in range(num_compounds):
@@ -438,7 +440,7 @@ class LexiconGenerator:
             return []
 
         prof = profile or getattr(lang, "profile", None)
-        pop = getattr(lang.environment, "population", 0.50) if lang.environment else 0.50
+        pop = getattr(lang, "population", None) or (getattr(lang.environment, "population", None) or 0.50)
         
         attn = lang.cultural_attention
         cultural_inertia = (attn[2] ** 1.4 * attn[5]) / (1.0 + attn[4] * 0.8)
@@ -451,8 +453,9 @@ class LexiconGenerator:
             return []
         
         logistic_damping = max(0.05, (1.0 - (n_current / k_carrying_capacity)) ** 1.2)
-        effective_attempts = int(round(n_current * growth_rate * logistic_damping))
-        effective_attempts = max(2, min(120, effective_attempts))
+        semantic_deficit_boost = max(1.0, 500.0 / max(40.0, n_current))
+        effective_attempts = int(round(n_current * growth_rate * semantic_deficit_boost * logistic_damping))
+        effective_attempts = max(4, min(120, effective_attempts))
 
         weights = lang.cultural_attention
         new_born: list[Word] = []

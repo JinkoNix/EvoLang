@@ -564,10 +564,11 @@ class GrammarEngine:
         attn = lang.cultural_attention
 
         s_idx = getattr(lang.profile, "synthesis_index", 0.50)
-        pop = getattr(lang.environment, "population", 0.50) if lang.environment else 0.50
-        hum = getattr(lang.environment, "humidity", 0.50) if lang.environment else 0.50
-        veg = getattr(lang.environment, "vegetation", 0.50) if lang.environment else 0.50
-        alt = getattr(lang.environment, "altitude", 0.0) if lang.environment else 0.0
+        pop = getattr(lang, "population", 0.50)
+        env = getattr(lang, "environment", None)
+        alt = getattr(env, "altitude", 0.0) if env else 0.0
+        hum = getattr(env, "humidity", 0.50) if env else 0.50
+        veg = env.emergent_vegetation(population=pop, cultural_attention=lang.cultural_attention) if hasattr(env, "emergent_vegetation") else 0.50
 
         t_strat = 0.15 + (0.80 / (1.0 + math.exp(5.0 * (pop ** 1.2 - 0.45))))
 
