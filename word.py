@@ -56,7 +56,7 @@ class Word:
     __slots__ = (
         'id', 'vector', '_phonemes', '_syllables', 'morphemes',
         'derivation', 'usage_frequency', 'category', 'generation_born',
-        'epochs_idle', 'senses', '_form', '_plain_form'
+        'epochs_idle', 'senses', '_form', '_plain_form', '_cached_cost'
     )
 
     _ID_COUNTER = 1000
@@ -88,6 +88,7 @@ class Word:
         self.morphemes = list(morphemes) if morphemes else []
         self._form = None
         self._plain_form = None
+        self._cached_cost = None
 
         if syllables:
             flat = []
@@ -115,7 +116,6 @@ class Word:
         else:
             self.senses = (self.vector,)
 
-        # Guarantee single root morpheme synchronization
         if not self.morphemes and self._phonemes:
             self.morphemes = [
                 Morpheme(
@@ -136,6 +136,7 @@ class Word:
         self._phonemes = list(new_phonemes)
         self._form = None
         self._plain_form = None
+        self._cached_cost = None
 
     @property
     def syllables(self) -> list:
@@ -144,7 +145,6 @@ class Word:
     @syllables.setter
     def syllables(self, new_syllables: Sequence) -> None:
         self._syllables = list(new_syllables)
-        # Automatic Single-Source-of-Truth Resynchronization:
         if self._syllables:
             flat = []
             for s in self._syllables:
@@ -152,6 +152,7 @@ class Word:
             self._phonemes = flat
         self._form = None
         self._plain_form = None
+        self._cached_cost = None
 
     @property
     def form(self) -> str:
@@ -202,12 +203,11 @@ class Word:
         self.usage_frequency += boost
         self.epochs_idle = 0
 
-    def is_obsolete(self, max_idle_epochs: int = 4, cultural_inertia: float = 1.0) -> bool:
-        """Evaluates memory decay: Higher cultural inertia retains idle words longer."""
+    def is_obsolete(self, max_idle_epochs: int = 25, cultural_inertia: float = 1.0) -> bool:
         if self.category == LexicalCategory.FUNCTIONAL_CLOSED or self.is_proto_root:
             return False
-        effective_max_idle = max(2, int(round(max_idle_epochs * cultural_inertia)))
-        return (self.epochs_idle >= effective_max_idle) and (self.usage_frequency < 0.30)
+        effective_max_idle = max(12, int(round(max_idle_epochs * max(0.5, cultural_inertia))))
+        return (self.epochs_idle >= effective_max_idle) and (self.usage_frequency < 0.15)
 
     def copy(self) -> Word:
         w = Word(
@@ -224,6 +224,7 @@ class Word:
         )
         w._form = self._form
         w._plain_form = self._plain_form
+        w._cached_cost = self._cached_cost
         return w
 
     def __len__(self) -> int:

@@ -1,7 +1,10 @@
 """
-grammar.py — Formal Generative Cognitive Morphosyntax with Continuous Strategy Dynamics.
-Features Multi-Strategy Hybridity (Affixation, Ablaut, Umlaut, Transfixation, Reduplication, Infixation),
-Demographic Morphological Leveling (T_strat), Case Syncretism, and Differential Object Marking.
+grammar.py — Formal Generative Cognitive Morphosyntax with Continuous Cultural Genome Dynamics.
+Features:
+- Animacy-Driven Differential Object Marking (DOM) & Split-Ergativity.
+- Sociality-Driven Clusivity (Inclusive vs. Exclusive "We").
+- Extension-Driven Multi-Tiered Spatial Deixis.
+- Concreteness-Driven Noun Class Semantics.
 """
 
 from __future__ import annotations
@@ -23,7 +26,6 @@ from syllable import SyllableEngine, StressPattern, Tone
 
 @dataclass
 class EmergentClass:
-    """An emergent gender/class category defined by its cognitive centroid in 7D space."""
     class_id: int
     label: str
     centroid: SemanticVector
@@ -32,7 +34,6 @@ class EmergentClass:
 
 @dataclass
 class EmergentVerbClass:
-    """An emergent verbal conjugation track (Aktionsart) defined by Dynamism, Potency, and Sociality."""
     class_id: int
     label: str
     centroid: SemanticVector
@@ -43,7 +44,6 @@ class EmergentVerbClass:
 
 @dataclass
 class NumeralChain:
-    """A hierarchical chain of somatic counting radices (Sub-Base -> Primary Base -> Super-Base)."""
     sub_base: int | None = None
     primary_base: int = 10
     super_base: int | None = None
@@ -52,7 +52,6 @@ class NumeralChain:
 
 @dataclass
 class EmergentParadigm:
-    """A collection of closed-class operators, pronouns, number markers, articles, and numeral chains."""
     temporal_operators: list[Word] = field(default_factory=list)
     spatial_operators: list[Word] = field(default_factory=list)
     determiners: list[Word] = field(default_factory=list)
@@ -103,7 +102,7 @@ class NounPhrase:
 
         paradigm = GrammarEngine.discover_grammar_system(lang)
 
-        # 1. Auto-Classification from 7D Semantics
+        # 1. Dynamic Classification from 7D Semantics
         if self.assigned_class is None and paradigm.noun_classes:
             self.assigned_class = GrammarEngine.classify_noun_dynamically(self.head_noun, paradigm, lang)
 
@@ -169,7 +168,7 @@ class NounPhrase:
                     art_tokens = [art_op.form]
                     art_gloss = [f"[{art_label}:{art_op.id}]"]
 
-        # 5. Case Inflection
+        # 5. Case Inflection & Clitic Fusion (Preposizioni Articolate)
         prep_tokens, prep_gloss = [], []
         post_tokens, post_gloss = [], []
         
@@ -191,12 +190,34 @@ class NounPhrase:
                 tag_str = f"[{'+'.join(tags)}]" if tags else ""
                 n_gloss = f"{self.head_noun.id}{tag_str}"
 
-                if h > 0.50:
-                    prep_tokens = [self.case_operator.form]
-                    prep_gloss = [f"[{self.case_label}:{self.case_operator.id}]"]
+                # PREPOSIZIONI ARTICOLATE: Fuse adjacent preposition and article
+                if art_op and not is_art_bound and s_idx >= 0.25:
+                    fused_p = ArticulatoryEnergyModel.repair_phonemes(
+                        list(self.case_operator.phonemes) + list(art_op.phonemes), 
+                        lang.profile
+                    )
+                    fused_w = Word(vector=self.case_operator.vector, phonemes=fused_p, is_ephemeral=True)
+                    pros_fused = SyllableEngine.apply_prosody(fused_w, pattern=lang.profile.stress_pattern)
+                    
+                    fused_token = pros_fused.form
+                    fused_gl = f"[{self.case_label}+{art_label}:{self.case_operator.id}+{art_op.id}]"
+
+                    if h > 0.50:
+                        prep_tokens = [fused_token]
+                        prep_gloss = [fused_gl]
+                        art_tokens, art_gloss = [], []  # Consumed into fused clitic
+                    else:
+                        post_tokens = [fused_token]
+                        post_gloss = [fused_gl]
+                        art_tokens, art_gloss = [], []
                 else:
-                    post_tokens = [self.case_operator.form]
-                    post_gloss = [f"[{self.case_label}:{self.case_operator.id}]"]
+                    # Detached adposition
+                    if h > 0.50:
+                        prep_tokens = [self.case_operator.form]
+                        prep_gloss = [f"[{self.case_label}:{self.case_operator.id}]"]
+                    else:
+                        post_tokens = [self.case_operator.form]
+                        post_gloss = [f"[{self.case_label}:{self.case_operator.id}]"]
         else:
             n_form = base_noun.form
             tags = [self.case_label] if self.case_label != "Nom" else []
@@ -274,7 +295,6 @@ class NounPhrase:
 
 @dataclass
 class Clause:
-    """A full hierarchical clause: Predicate + Arguments + TAM + Person Agreement + Subordination."""
     predicate: Word
     valency: ClauseValency
     subject: NounPhrase
@@ -332,17 +352,14 @@ class Clause:
             clause_ipa.append(self.relativizer.form)
             clause_gl.append(f"[REL:{self.relativizer.id}]")
 
-        # Pragmatic Scrambling in High-Synthesis Case Languages (Latin / Russian model)
         has_overt_case = (self.subject.case_operator is not None or s_idx >= 0.55)
         scramble_roll = random.random()
 
         if has_overt_case and s_idx >= 0.50 and scramble_roll < 0.25:
             if scramble_roll < 0.12 and obj_ipa:
-                # O S V (Topicalization)
                 clause_ipa.extend([obj_ipa, subj_ipa] + ([ind_ipa] if ind_ipa else []) + v_tokens)
                 clause_gl.extend([obj_gl, subj_gl] + ([ind_gl] if ind_gl else []) + v_gloss)
             else:
-                # V S O (Verb Focus)
                 clause_ipa.extend(v_tokens + [subj_ipa] + ([obj_ipa] if obj_ipa else []))
                 clause_gl.extend(v_gloss + [subj_gl] + ([obj_gl] if obj_gl else []))
 
@@ -383,7 +400,6 @@ class GrammarEngine:
 
     @classmethod
     def get_part_of_speech(cls, word: Word) -> str:
-        """Determines Part of Speech via continuous cognitive prototype attractor scores."""
         if word.category == LexicalCategory.FUNCTIONAL_CLOSED:
             return "Particle"
         from translator import SemanticTranslator
@@ -391,7 +407,6 @@ class GrammarEngine:
 
     @classmethod
     def compress_bound_affix(cls, operator: Word) -> list[Phoneme]:
-        """Compresses a functional operator into a light 1-2 segment bound affix."""
         p_list = list(operator.phonemes)
         if len(p_list) <= 2:
             return p_list
@@ -405,7 +420,6 @@ class GrammarEngine:
 
     @classmethod
     def should_fuse_morpheme(cls, host_word: Word, operator: Word, lang: Language, is_prefix: bool = False) -> bool:
-        """Determines if a grammatical clitic fuses into a bound affix (Deterministic)."""
         s_idx = lang.profile.synthesis_index
         if s_idx < 0.30:
             return False
@@ -427,7 +441,6 @@ class GrammarEngine:
         lang: Language,
         category_type: str = "case",
     ) -> tuple[Word, bool]:
-        """Attaches grammatical relators with consistent directional morphology."""
         h = lang.profile.head_directionality
         is_prefix = (category_type == "class") or (h > 0.50)
 
@@ -435,7 +448,6 @@ class GrammarEngine:
             return noun.copy(), False
 
         affix_phonemes = cls.compress_bound_affix(operator)
-
         m_stem_list = [m.copy() for m in noun.morphemes] if noun.morphemes else [Morpheme(noun.phonemes, root_family_id=noun.derivation.root_family_id)]
         m_case = Morpheme(affix_phonemes, root_family_id=operator.derivation.root_family_id, is_grammatical=True, stage=ClineStage.BOUND_AFFIX)
 
@@ -454,41 +466,42 @@ class GrammarEngine:
         prof = lang.profile if lang else None
         inertia = getattr(lang, "cultural_inertia", 1.0) if lang else 1.0
         repaired = ArticulatoryEnergyModel.repair_word(inflected_word, prof, cultural_inertia=inertia) if prof else inflected_word
-        final_word = SyllableEngine.apply_prosody(repaired, pattern=lang.profile.stress_pattern, tone_tier=lang.profile.tone_tier)
+        final_word = SyllableEngine.apply_prosody(repaired, pattern=lang.profile.stress_pattern)
         return final_word, True
 
     @classmethod
     def apply_vocalic_ablaut(cls, word: Word, mode: str = "past", lang: Language | None = None) -> tuple[Word, bool]:
-        """Applies non-concatenative vocalic apophony/ablaut (sing -> sang, foot -> feet)."""
+        """
+        Applies vocalic apophony/umlaut across the ENTIRE vowel nucleus simultaneously:
+        Prevents long vowels (uː) from fragmenting into hiatus (i u) and eroding into glides.
+        """
         p_list = list(word.phonemes)
         v_indices = [i for i, p in enumerate(p_list) if p.kind == PhonemeKind.VOWEL]
         if not v_indices or not lang:
             return word.copy(), False
 
-        v_idx = v_indices[0]
-        orig_v = p_list[v_idx]
+        orig_v = p_list[v_indices[0]]
         h, b, r = orig_v.point
 
         if mode == "past":
-            if h >= 3.0:
-                new_v_point = (0.0, 1.0, 0.0) if b <= 1.0 else (4.0, 2.0, 1.0)
-            else:
-                new_v_point = (6.0, 2.0, 1.0)
+            new_v_point = (0.0, 1.0, 0.0) if (h >= 3.0 and b <= 1.0) else ((4.0, 2.0, 1.0) if h >= 3.0 else (6.0, 2.0, 1.0))
         else:  # mode == 'plural' (Umlaut)
             if b >= 0.8 or h <= 1.5:
                 new_v_point = (6.0, 0.0, 0.0) if h >= 3.0 else (4.0, 0.0, 0.0)
             else:
                 return word.copy(), False
 
-        p_list[v_idx] = orig_v.drift(point=new_v_point)
+        # FRONTS ENTIRE NUCLEUS: All adjacent vowels in the nucleus front in unison
+        for v_idx in v_indices:
+            p_list[v_idx] = p_list[v_idx].drift(point=new_v_point)
+
         cleaned = ArticulatoryEnergyModel.repair_phonemes(p_list, lang.profile)
         temp_w = Word(vector=word.vector, phonemes=cleaned, is_ephemeral=True)
-        ablaut_word = SyllableEngine.apply_prosody(temp_w, pattern=lang.profile.stress_pattern, tone_tier=lang.profile.tone_tier)
+        ablaut_word = SyllableEngine.apply_prosody(temp_w, pattern=lang.profile.stress_pattern)
         return ablaut_word, True
 
     @classmethod
     def apply_root_pattern_transfix(cls, word: Word, template: str = "a_a", lang: Language | None = None) -> tuple[Word, bool]:
-        """Applies Semitic Root-and-Pattern Transfixation (k-t-b -> kataba / kutiba)."""
         if not lang:
             return word.copy(), False
 
@@ -511,12 +524,11 @@ class GrammarEngine:
 
         cleaned = ArticulatoryEnergyModel.repair_phonemes(raw_p, lang.profile)
         temp_w = Word(vector=word.vector, phonemes=cleaned, is_ephemeral=True)
-        transfix_word = SyllableEngine.apply_prosody(temp_w, pattern=lang.profile.stress_pattern, tone_tier=lang.profile.tone_tier)
+        transfix_word = SyllableEngine.apply_prosody(temp_w, pattern=lang.profile.stress_pattern)
         return transfix_word, True
 
     @classmethod
     def apply_reduplication(cls, word: Word, mode: str = "prefix", lang: Language | None = None) -> tuple[Word, bool]:
-        """Applies iconic morphological reduplication (CV-copying or full root copying)."""
         if not word.phonemes or not lang:
             return word.copy(), False
         
@@ -533,11 +545,10 @@ class GrammarEngine:
 
         cleaned = ArticulatoryEnergyModel.repair_phonemes(raw_p, lang.profile)
         temp_w = Word(vector=word.vector, phonemes=cleaned, is_ephemeral=True)
-        return SyllableEngine.apply_prosody(temp_w, pattern=lang.profile.stress_pattern, tone_tier=lang.profile.tone_tier), True
+        return SyllableEngine.apply_prosody(temp_w, pattern=lang.profile.stress_pattern), True
 
     @classmethod
     def apply_infixation(cls, word: Word, infix_phonemes: Sequence[Phoneme], lang: Language | None = None) -> tuple[Word, bool]:
-        """Inserts an infix bound morpheme inside the root immediately after the onset consonant."""
         if not word.phonemes or len(word.phonemes) < 2 or not lang:
             return word.copy(), False
 
@@ -552,7 +563,7 @@ class GrammarEngine:
         raw_p = p_list[:onset_idx] + [p.drift() for p in infix_phonemes] + p_list[onset_idx:]
         cleaned = ArticulatoryEnergyModel.repair_phonemes(raw_p, lang.profile)
         temp_w = Word(vector=word.vector, phonemes=cleaned, is_ephemeral=True)
-        return SyllableEngine.apply_prosody(temp_w, pattern=lang.profile.stress_pattern, tone_tier=lang.profile.tone_tier), True
+        return SyllableEngine.apply_prosody(temp_w, pattern=lang.profile.stress_pattern), True
 
     @classmethod
     def discover_grammar_system(cls, lang: Language) -> EmergentParadigm:
@@ -562,56 +573,43 @@ class GrammarEngine:
 
         candidates = list(lang.words.values())
         attn = lang.cultural_attention
-
         s_idx = getattr(lang.profile, "synthesis_index", 0.50)
         pop = getattr(lang, "population", 0.50)
         env = getattr(lang, "environment", None)
         alt = getattr(env, "altitude", 0.0) if env else 0.0
         hum = getattr(env, "humidity", 0.50) if env else 0.50
-        veg = env.emergent_vegetation(population=pop, cultural_attention=lang.cultural_attention) if hasattr(env, "emergent_vegetation") else 0.50
+
+        # Cultural Dimensions
+        w_con, w_anim, w_val, w_pot, w_dyn, w_soc, w_ext = attn
 
         t_strat = 0.15 + (0.80 / (1.0 + math.exp(5.0 * (pop ** 1.2 - 0.45))))
-
         max_syncretism = max(1, min(3, int(round(1 + 2.5 * pop * s_idx))))
         assigned_word_ids: set[int] = set()
         assigned_family_ids: set[int] = set()
         form_frequencies: Counter = Counter()
 
-        def get_best_candidates(
-            domain_score_fn, 
-            max_count: int, 
-            allow_family_overlap: bool = False, 
-            length_penalty_power: float = 1.80,
-            ignore_assigned: bool = False
-        ) -> list[Word]:
+        def get_best_candidates(domain_score_fn, max_count: int, allow_family_overlap: bool = False, length_penalty_power: float = 1.80, ignore_assigned: bool = False) -> list[Word]:
             scored = []
             for w in candidates:
                 if not ignore_assigned and w.id in assigned_word_ids:
                     continue
-                
                 score = domain_score_fn(w)
                 if score <= 0.01:
                     continue
-
                 if length_penalty_power > 0.0:
                     score = score / (len(w.phonemes) ** length_penalty_power)
-                
                 score = score * (w.usage_frequency / cls.calculate_semantic_specificity(w))
                 scored.append((score, w))
 
-            if not scored:
-                return []
-
+            if not scored: return []
             scored.sort(key=lambda item: item[0], reverse=True)
 
             selected = []
             for _, w in scored:
                 fam = w.derivation.root_family_id
                 form_key = w.plain_form
-
                 if form_frequencies[form_key] >= max_syncretism and not ignore_assigned:
                     continue
-
                 if allow_family_overlap or ignore_assigned or fam not in assigned_family_ids or len(selected) < 2:
                     selected.append(w)
                     assigned_word_ids.add(w.id)
@@ -621,39 +619,17 @@ class GrammarEngine:
                         break
             return selected
 
-        # 1. Operators & Functors Recruited with Strong Zipfian Length Penalty (Length^1.8)
-        modals = get_best_candidates(
-            lambda w: (w.vector.potency * 0.5 + (1.0 - w.vector.valence) * 0.5) * (1.0 - w.vector.concreteness * 0.6),
-            max_count=6,
-            length_penalty_power=1.80
-        )
-        temporals = get_best_candidates(
-            lambda w: w.vector.dynamism * (1.0 - w.vector.concreteness * 0.6),
-            max_count=8,
-            length_penalty_power=1.80
-        )
-        spatials = get_best_candidates(
-            lambda w: w.vector.extension * (1.0 - w.vector.dynamism * 0.5),
-            max_count=8,
-            length_penalty_power=1.80
-        )
-        determiners = get_best_candidates(
-            lambda w: (w.vector.extension * 0.6 + (1.0 - w.vector.dynamism) * 0.4) * (1.0 - w.vector.animacy * 0.5),
-            max_count=6,
-            length_penalty_power=1.80
-        )
-        relativizers = get_best_candidates(
-            lambda w: (w.vector.extension * 0.5 + (1.0 - w.vector.concreteness) * 0.5),
-            max_count=4,
-            length_penalty_power=1.80
-        )
-        complementizers = get_best_candidates(
-            lambda w: (w.vector.sociality * 0.5 + w.vector.dynamism * 0.5) * (1.0 - w.vector.concreteness * 0.5),
-            max_count=4,
-            length_penalty_power=1.80
-        )
+        modals = get_best_candidates(lambda w: (w.vector.potency * 0.5 + (1.0 - w.vector.valence) * 0.5) * (1.0 - w.vector.concreteness * 0.6), max_count=6)
+        temporals = get_best_candidates(lambda w: w.vector.dynamism * (1.0 - w.vector.concreteness * 0.6), max_count=8)
 
-        # 2. Personal Pronouns (Heavy Length Penalty Length^2.40 for 1-2 Segment Cores)
+        # Extension-Driven Spatial Deixis: High extension drives 4-way demonstratives
+        spat_count = 8 if w_ext < 1.25 else 12
+        spatials = get_best_candidates(lambda w: w.vector.extension * (1.0 - w.vector.dynamism * 0.5), max_count=spat_count)
+        determiners = get_best_candidates(lambda w: (w.vector.extension * 0.6 + (1.0 - w.vector.dynamism) * 0.4) * (1.0 - w.vector.animacy * 0.5), max_count=6)
+        relativizers = get_best_candidates(lambda w: (w.vector.extension * 0.5 + (1.0 - w.vector.concreteness) * 0.5), max_count=4)
+        complementizers = get_best_candidates(lambda w: (w.vector.sociality * 0.5 + w.vector.dynamism * 0.5) * (1.0 - w.vector.concreteness * 0.5), max_count=4)
+
+        # Personal Pronouns & Sociality Clusivity (Inclusive vs. Exclusive "We")
         pronouns: dict[str, Word] = {}
         p_1sg = get_best_candidates(lambda w: w.vector.animacy * 0.60 + (1.0 - w.vector.sociality) * 0.40, max_count=1, allow_family_overlap=True, length_penalty_power=2.40)
         p_2sg = get_best_candidates(lambda w: w.vector.animacy * 0.50 + w.vector.sociality * 0.50, max_count=1, allow_family_overlap=True, length_penalty_power=2.40)
@@ -663,27 +639,28 @@ class GrammarEngine:
         if p_2sg: pronouns["2sg"] = p_2sg[0]
         if p_3sg: pronouns["3sg"] = p_3sg[0]
 
-        p_pl = get_best_candidates(lambda w: w.vector.extension * 0.70 + w.vector.sociality * 0.30, max_count=3, allow_family_overlap=True, length_penalty_power=2.40)
-        if len(p_pl) >= 3:
-            pronouns["1pl"] = p_pl[0]
-            pronouns["2pl"] = p_pl[1]
-            pronouns["3pl"] = p_pl[2]
-        elif p_pl:
-            pronouns["1pl"] = p_pl[0]
-            pronouns["2pl"] = p_2sg[0] if p_2sg else p_pl[0]
-            pronouns["3pl"] = p_3sg[0] if p_3sg else p_pl[0]
+        # Sociality Clusivity: High sociality splits 1pl into inclusive vs exclusive
+        if w_soc >= 1.20:
+            p_incl = get_best_candidates(lambda w: w.vector.sociality * 0.70 + w.vector.animacy * 0.30, max_count=1, allow_family_overlap=True, length_penalty_power=2.40)
+            p_excl = get_best_candidates(lambda w: w.vector.animacy * 0.70 + (1.0 - w.vector.sociality) * 0.30, max_count=1, allow_family_overlap=True, length_penalty_power=2.40)
+            if p_incl: pronouns["1pl_incl"] = p_incl[0]
+            if p_excl: pronouns["1pl_excl"] = p_excl[0]
+            pronouns["1pl"] = p_incl[0] if p_incl else (p_1sg[0] if p_1sg else candidates[0])
+        else:
+            p_pl = get_best_candidates(lambda w: w.vector.extension * 0.70 + w.vector.sociality * 0.30, max_count=1, allow_family_overlap=True, length_penalty_power=2.40)
+            if p_pl: pronouns["1pl"] = p_pl[0]
 
-        # 3. Definiteness & Articles
-        ext_attn = attn[6]
-        soc_attn = attn[5]
-        con_attn = attn[0]
+        p_2pl = get_best_candidates(lambda w: w.vector.sociality * 0.60 + w.vector.extension * 0.40, max_count=1, allow_family_overlap=True, length_penalty_power=2.40)
+        p_3pl = get_best_candidates(lambda w: w.vector.extension * 0.80, max_count=1, allow_family_overlap=True, length_penalty_power=2.40)
+        if p_2pl: pronouns["2pl"] = p_2pl[0]
+        if p_3pl: pronouns["3pl"] = p_3pl[0]
 
+        # Articles
         p_def = get_best_candidates(lambda w: (w.vector.extension * 0.65 + (1.0 - w.vector.concreteness) * 0.35) * (1.0 - w.vector.animacy * 0.5), max_count=1, allow_family_overlap=True, length_penalty_power=2.0)
         p_indef = get_best_candidates(lambda w: (1.0 - w.vector.extension) * 0.60 + w.vector.concreteness * 0.40, max_count=1, allow_family_overlap=True, length_penalty_power=2.0)
 
-        def_salience = (ext_attn * 0.45) + (pop * 0.40) - (s_idx * 0.25)
+        def_salience = (w_ext * 0.45) + (pop * 0.40) - (s_idx * 0.25)
         articles: dict[str, Word] = {}
-
         if def_salience >= 0.40 and p_def:
             articles["def"] = p_def[0]
             if (pop >= 0.50 or s_idx < 0.40) and p_indef:
@@ -694,9 +671,9 @@ class GrammarEngine:
         else:
             art_system = "Transdefinite (No Articles)"
 
-        # 4. Number System
-        num_salience = s_idx * 2.0 + ext_attn * 0.50 - 0.40
-        dual_salience = soc_attn * 0.65 + (1.0 - pop) * 0.55 + alt * 0.20 - 0.85
+        # Number System
+        num_salience = s_idx * 2.0 + w_ext * 0.50 - 0.40
+        dual_salience = w_soc * 0.65 + (1.0 - pop) * 0.55 + alt * 0.20 - 0.85
         number_operators: dict[str, Word] = {}
 
         if num_salience <= 0.30:
@@ -704,55 +681,35 @@ class GrammarEngine:
         elif dual_salience > 0.35:
             num_system_name = "Singular / Dual / Plural"
             ops = get_best_candidates(lambda w: w.vector.extension * 0.70 + w.vector.sociality * 0.30, max_count=2, length_penalty_power=2.0)
-            if len(ops) >= 2:
-                number_operators["du"], number_operators["pl"] = ops[0], ops[1]
-            elif ops:
-                number_operators["pl"] = ops[0]
+            if len(ops) >= 2: number_operators["du"], number_operators["pl"] = ops[0], ops[1]
+            elif ops: number_operators["pl"] = ops[0]
         else:
             num_system_name = "Singular / Plural"
             ops = get_best_candidates(lambda w: w.vector.extension * 0.70 + w.vector.sociality * 0.30, max_count=1, length_penalty_power=2.0)
-            if ops:
-                number_operators["pl"] = ops[0]
+            if ops: number_operators["pl"] = ops[0]
 
-        # 5. Somatic Counting Chain
+        # Numeral System
         hand_load = sum(w.usage_frequency for w in candidates if w.vector.distance_to(SemanticSpace.HAND) < 0.25)
         body_load = sum(w.usage_frequency for w in candidates if w.vector.distance_to(SemanticSpace.BODY) < 0.25)
         cycle_load = sum(w.usage_frequency for w in candidates if w.vector.distance_to(SemanticSpace.MOON) < 0.25)
 
         sub_base = 5 if (hand_load > 2.2 or (pop < 0.30 and s_idx < 0.35)) else None
-        primary_base = 12 if (cycle_load > 2.5 or (hum > 0.65 and ext_attn > 1.25)) else 10
-        
-        if body_load > 2.5 or (alt > 0.55 or veg > 0.65):
-            super_base = 20
-            chain_name = f"Hybrid [{'5+' if sub_base else ''}{primary_base}+20] Vigesimal"
-        else:
-            super_base = 100
-            chain_name = f"Hybrid [{'5+' if sub_base else ''}{primary_base}+100] Decimal"
+        primary_base = 12 if (cycle_load > 2.5 or (hum > 0.65 and w_ext > 1.25)) else 10
+        super_base = 20 if (body_load > 2.5 or alt > 0.55) else 100
+        chain_name = f"Hybrid [{'5+' if sub_base else ''}{primary_base}+{super_base}] {'Vigesimal' if super_base == 20 else 'Decimal'}"
 
         num_chain = NumeralChain(sub_base=sub_base, primary_base=primary_base, super_base=super_base, name=chain_name)
         digits: dict[int, Word] = {}
         radix_words: dict[str, Word] = {}
         used_digit_ids: set[int] = set()
 
-        d1 = get_best_candidates(
-            lambda w: (1.0 - w.vector.extension) * 0.60 + w.vector.concreteness * 0.40, 
-            max_count=1, 
-            allow_family_overlap=True,
-            length_penalty_power=2.0,
-            ignore_assigned=True
-        )
+        d1 = get_best_candidates(lambda w: (1.0 - w.vector.extension) * 0.60 + w.vector.concreteness * 0.40, max_count=1, allow_family_overlap=True, length_penalty_power=2.0, ignore_assigned=True)
         if d1:
             digits[1] = d1[0]
             used_digit_ids.add(d1[0].id)
 
         max_digit_target = primary_base if sub_base is None else 5
-        digit_cands = get_best_candidates(
-            lambda w: (w.vector.concreteness * 0.50 + w.vector.potency * 0.50) if w.id not in used_digit_ids else 0.0, 
-            max_count=max_digit_target, 
-            allow_family_overlap=True,
-            length_penalty_power=2.0,
-            ignore_assigned=True
-        )
+        digit_cands = get_best_candidates(lambda w: (w.vector.concreteness * 0.50 + w.vector.potency * 0.50) if w.id not in used_digit_ids else 0.0, max_count=max_digit_target, allow_family_overlap=True, length_penalty_power=2.0, ignore_assigned=True)
 
         for d_idx in range(2, max_digit_target + 1):
             cand_idx = d_idx - 2
@@ -760,32 +717,21 @@ class GrammarEngine:
             digits[d_idx] = chosen_w
             used_digit_ids.add(chosen_w.id)
 
-        radix_cands = get_best_candidates(
-            lambda w: (w.vector.extension * 0.80 + w.vector.potency * 0.20) if w.id not in used_digit_ids else 0.0,
-            max_count=4,
-            allow_family_overlap=True,
-            length_penalty_power=1.8,
-            ignore_assigned=True
-        )
-
-        if sub_base:
-            radix_words["hand"] = radix_cands[0] if len(radix_cands) > 0 else (d1[0] if d1 else candidates[0])
+        radix_cands = get_best_candidates(lambda w: (w.vector.extension * 0.80 + w.vector.potency * 0.20) if w.id not in used_digit_ids else 0.0, max_count=4, allow_family_overlap=True, length_penalty_power=1.8, ignore_assigned=True)
+        if sub_base: radix_words["hand"] = radix_cands[0] if len(radix_cands) > 0 else (d1[0] if d1 else candidates[0])
         radix_words["base"] = radix_cands[1] if len(radix_cands) > 1 else (d1[0] if d1 else candidates[0])
         radix_words["super"] = radix_cands[2] if len(radix_cands) > 2 else (d1[0] if d1 else candidates[0])
         radix_words["hundred"] = radix_cands[3] if len(radix_cands) > 3 else (d1[0] if d1 else candidates[0])
 
-        # 6. DYNAMIC EMERGENT NOUN CLASSES (Requires >= 2 for contrastive gender/class system)
-        attn_weight = (ext_attn * 0.40 + soc_attn * 0.35 + con_attn * 0.25) / max(0.01, sum(attn) / 7.0)
+        # Concreteness & Animacy-Driven Noun Classification
+        attn_weight = (w_ext * 0.40 + w_soc * 0.35 + w_con * 0.25) / max(0.01, sum(attn) / 7.0)
         phi_noun = s_idx * (1.0 - 0.55 * min(1.5, pop)) * attn_weight
         num_classes_calc = int(round(10.0 * (phi_noun - 0.22)))
         num_classes = num_classes_calc if num_classes_calc >= 2 else 0
 
         emergent_classes: list[EmergentClass] = []
         if num_classes >= 2:
-            living_nouns = [w for w in candidates if w.category == LexicalCategory.CONTENT_OPEN and w.vector.dynamism < 0.55]
-            if not living_nouns:
-                living_nouns = candidates[:num_classes]
-
+            living_nouns = [w for w in candidates if w.category == LexicalCategory.CONTENT_OPEN and w.vector.dynamism < 0.55] or candidates[:num_classes]
             centroids = [living_nouns[0].vector]
             for _ in range(1, num_classes):
                 farthest = max(living_nouns, key=lambda w: min(w.vector.weighted_distance_to(c, attn) for c in centroids))
@@ -794,47 +740,32 @@ class GrammarEngine:
             for i, c_vec in enumerate(centroids):
                 c, a, v, p, d, s, e = c_vec.coords
                 features = []
+                # Animacy dictates primary grammatical gender split
                 if a >= 0.50: features.append("Animate" if a < 0.75 else "Humanoid")
                 else: features.append("Inanimate" if c >= 0.50 else "Abstract")
-                if e >= 0.55: features.append("Extended/Shape")
-                if p >= 0.60: features.append("Potent/Tool")
-                if s >= 0.55: features.append("Social/Kin")
-
+                # Concreteness dictates shape/material classifiers
+                if c >= 0.60 and e >= 0.55: features.append("Extended-Shape")
+                elif c >= 0.60 and p >= 0.60: features.append("Solid-Tool")
                 label = "-".join(features) if features else "General"
                 marker_cand = get_best_candidates(lambda w: 1.0 - w.vector.weighted_distance_to(c_vec, attn), max_count=1, allow_family_overlap=True, length_penalty_power=2.0)
-                marker = marker_cand[0] if marker_cand else None
+                emergent_classes.append(EmergentClass(class_id=i + 1, label=f"Class {i+1} ({label})", centroid=c_vec, marker=marker_cand[0] if marker_cand else None))
 
-                emergent_classes.append(
-                    EmergentClass(
-                        class_id=i + 1,
-                        label=f"Class {i+1} ({label})",
-                        centroid=c_vec,
-                        marker=marker,
-                    )
-                )
-
-        # 7. DYNAMIC EMERGENT VERB CONJUGATION CLASSES WITH SYSTEMATIC STRATEGIES
+        # Dynamic Verb Classes
         phi_verb = s_idx * (1.0 - 0.50 * min(1.5, pop))
         num_verb_classes = max(0, min(4, int(round(4.0 * (phi_verb - 0.18)))))
-
         emergent_verb_classes: list[EmergentVerbClass] = []
-        if num_verb_classes > 0:
-            living_verbs = [w for w in candidates if w.category == LexicalCategory.CONTENT_OPEN and w.vector.dynamism >= 0.50]
-            if not living_verbs:
-                living_verbs = candidates[:num_verb_classes]
 
+        if num_verb_classes > 0:
+            living_verbs = [w for w in candidates if w.category == LexicalCategory.CONTENT_OPEN and w.vector.dynamism >= 0.50] or candidates[:num_verb_classes]
             v_centroids = [living_verbs[0].vector]
             for _ in range(1, num_verb_classes):
                 farthest_v = max(living_verbs, key=lambda w: min(w.vector.weighted_distance_to(c, attn) for c in v_centroids))
                 v_centroids.append(farthest_v.vector)
 
             aspect_flavors = ["Aorist/Perf", "Durative/Imperf", "Directional/Telic", "Telic/Punctual"]
-
             for i, c_vec in enumerate(v_centroids):
                 c, a, v, p, d, s, e = c_vec.coords
                 features = []
-                
-                # Multi-Strategy Selection Modulated by Demographic Temperature (T_strat)
                 if p >= 0.70 and d >= 0.70 and (random.random() < t_strat):
                     features.append("Dynamic/Action")
                     strategy = "ablaut" if (s_idx >= 0.40 and hum < 0.40) else "concatenative"
@@ -842,48 +773,21 @@ class GrammarEngine:
                     features.append("Social/Communication")
                     strategy = "transfix" if (s_idx >= 0.50 and hum < 0.25) else "concatenative"
                 elif d >= 0.80 and (random.random() < t_strat * 0.60):
-                    features.append("Iterative/Continuous")
+                    features.append("Iterative")
                     strategy = "reduplication"
                 else:
                     features.append("General")
                     strategy = "concatenative"
 
                 label = "-".join(features) if features else "General"
-                theme_cand = get_best_candidates(
-                    lambda w: 1.0 - w.vector.weighted_distance_to(c_vec, attn),
-                    max_count=1,
-                    allow_family_overlap=True,
-                    length_penalty_power=2.0
-                )
-
-                emergent_verb_classes.append(
-                    EmergentVerbClass(
-                        class_id=i + 1,
-                        label=f"Class {i+1} ({label})" if num_verb_classes > 1 else "Universal Regular Conjugation",
-                        centroid=c_vec,
-                        thematic_marker=theme_cand[0] if theme_cand else None,
-                        aspect_label=aspect_flavors[i % len(aspect_flavors)],
-                        morph_strategy=strategy,
-                    )
-                )
+                theme_cand = get_best_candidates(lambda w: 1.0 - w.vector.weighted_distance_to(c_vec, attn), max_count=1, allow_family_overlap=True, length_penalty_power=2.0)
+                emergent_verb_classes.append(EmergentVerbClass(class_id=i + 1, label=f"Class {i+1} ({label})" if num_verb_classes > 1 else "Universal Regular Conjugation", centroid=c_vec, thematic_marker=theme_cand[0] if theme_cand else None, aspect_label=aspect_flavors[i % len(aspect_flavors)], morph_strategy=strategy))
 
         paradigm = EmergentParadigm(
-            temporal_operators=temporals,
-            spatial_operators=spatials,
-            determiners=determiners,
-            modal_operators=modals,
-            noun_classes=emergent_classes,
-            verb_classes=emergent_verb_classes,
-            relativizers=relativizers,
-            complementizers=complementizers,
-            pronouns=pronouns,
-            number_system=num_system_name,
-            number_operators=number_operators,
-            article_system=art_system,
-            articles=articles,
-            numeral_chain=num_chain,
-            digits=digits,
-            radix_words=radix_words,
+            temporal_operators=temporals, spatial_operators=spatials, determiners=determiners, modal_operators=modals,
+            noun_classes=emergent_classes, verb_classes=emergent_verb_classes, relativizers=relativizers, complementizers=complementizers,
+            pronouns=pronouns, number_system=num_system_name, number_operators=number_operators, article_system=art_system,
+            articles=articles, numeral_chain=num_chain, digits=digits, radix_words=radix_words,
         )
 
         lang._cached_grammar_paradigm = paradigm
@@ -903,7 +807,6 @@ class GrammarEngine:
         chain = para.numeral_chain
         h = lang.profile.head_directionality
         s_idx = lang.profile.synthesis_index
-
         val_rem = value
         blocks: list[list[Phoneme]] = []
 
@@ -911,7 +814,6 @@ class GrammarEngine:
             q_super, val_rem = divmod(val_rem, chain.super_base)
             super_word = para.radix_words.get("super") or para.radix_words.get("base")
             super_p = list(super_word.phonemes) if super_word else []
-
             if q_super > 1 and q_super in para.digits:
                 mult_p = list(para.digits[q_super].phonemes)
                 blocks.append(mult_p + super_p if h < 0.5 else super_p + mult_p)
@@ -922,7 +824,6 @@ class GrammarEngine:
             q_prim, val_rem = divmod(val_rem, chain.primary_base)
             base_word = para.radix_words.get("base")
             base_p = list(base_word.phonemes) if base_word else []
-
             if q_prim > 1 and q_prim in para.digits:
                 mult_p = list(para.digits[q_prim].phonemes)
                 blocks.append(mult_p + base_p if h < 0.5 else base_p + mult_p)
@@ -931,45 +832,32 @@ class GrammarEngine:
 
         if chain.sub_base and val_rem >= chain.sub_base:
             hand_word = para.radix_words.get("hand", para.radix_words.get("base"))
-            if hand_word:
-                blocks.append(list(hand_word.phonemes))
+            if hand_word: blocks.append(list(hand_word.phonemes))
             val_rem = val_rem - chain.sub_base
 
         if val_rem > 0:
-            if val_rem in para.digits:
-                blocks.append(list(para.digits[val_rem].phonemes))
+            if val_rem in para.digits: blocks.append(list(para.digits[val_rem].phonemes))
             elif 1 in para.digits:
                 unit_p = list(para.digits[1].phonemes)
-                for _ in range(val_rem):
-                    blocks.append(list(unit_p))
+                for _ in range(val_rem): blocks.append(list(unit_p))
 
         ordered_blocks = blocks if h < 0.50 else list(reversed(blocks))
-
         mag_scale = min(1.0, math.log10(max(1, value) + 1.0) / 2.5)
-        num_vec = SemanticVector(
-            concreteness=0.10,
-            animacy=0.0,
-            valence=0.50,
-            potency=0.20 + (mag_scale * 0.60),
-            dynamism=0.0,
-            sociality=0.10,
-            extension=0.20 + (mag_scale * 0.75),
-        )
+        num_vec = SemanticVector(0.10, 0.0, 0.50, 0.20 + (mag_scale * 0.60), 0.0, 0.10, 0.20 + (mag_scale * 0.75))
 
         if s_idx >= 0.50:
             combined_p: list[Phoneme] = []
-            for b in ordered_blocks:
-                combined_p.extend(b)
+            for b in ordered_blocks: combined_p.extend(b)
             temp_word = Word(vector=num_vec, phonemes=combined_p)
             repaired = ArticulatoryEnergyModel.repair_word(temp_word, lang.profile)
-            prosodified = SyllableEngine.apply_prosody(repaired, pattern=lang.profile.stress_pattern, tone_tier=lang.profile.tone_tier)
+            prosodified = SyllableEngine.apply_prosody(repaired, pattern=lang.profile.stress_pattern)
             result = f"/{prosodified.form}/"
         else:
             phrased_tokens: list[str] = []
             for b in ordered_blocks:
                 w_tok = Word(vector=num_vec, phonemes=b)
                 w_rep = ArticulatoryEnergyModel.repair_word(w_tok, lang.profile)
-                w_pro = SyllableEngine.apply_prosody(w_rep, pattern=lang.profile.stress_pattern, tone_tier=lang.profile.tone_tier)
+                w_pro = SyllableEngine.apply_prosody(w_rep, pattern=lang.profile.stress_pattern)
                 phrased_tokens.append(w_pro.form)
             result = f"/{' '.join(phrased_tokens)}/"
 
@@ -978,8 +866,7 @@ class GrammarEngine:
 
     @classmethod
     def classify_noun_dynamically(cls, word: Word, paradigm: EmergentParadigm, lang: Language) -> EmergentClass | None:
-        if not paradigm.noun_classes or len(paradigm.noun_classes) < 2:
-            return None
+        if not paradigm.noun_classes or len(paradigm.noun_classes) < 2: return None
         return min(paradigm.noun_classes, key=lambda e_cls: word.vector.weighted_distance_to(e_cls.centroid, lang.cultural_attention))
 
     @classmethod
@@ -992,32 +879,23 @@ class GrammarEngine:
     def get_valency_frame(cls, verb: Word) -> ClauseValency:
         c, a, v, p, d, s, e = verb.vector.coords
         transitivity_score = (d * 0.50) + (p * 0.30) + (s * 0.20)
-        if transitivity_score >= 0.65 and e >= 0.45:
-            return ClauseValency.DITRANSITIVE
-        if transitivity_score >= 0.45:
-            return ClauseValency.TRANSITIVE
+        if transitivity_score >= 0.65 and e >= 0.45: return ClauseValency.DITRANSITIVE
+        if transitivity_score >= 0.45: return ClauseValency.TRANSITIVE
         return ClauseValency.INTRANSITIVE
 
     @classmethod
     def get_alignment_system(cls, lang: Language) -> str:
-        return "Ergative-Absolutive" if lang.cultural_attention[3] > (lang.cultural_attention[5] * 1.15) else "Nominative-Accusative"
+        return getattr(lang.profile, "alignment", "nominative_accusative")
 
     @classmethod
     def resolve_suppletive_stem(cls, verb: Word, lang: Language, is_past_or_perfective: bool = False) -> tuple[Word, bool]:
-        if not is_past_or_perfective or verb.usage_frequency < 4.0:
-            return verb, False
-
+        if not is_past_or_perfective or verb.usage_frequency < 4.0: return verb, False
         competitors = [
             w for w in lang.words.values()
-            if w.id != verb.id
-            and w.derivation.derivation_type == DerivationType.ROOT
-            and w.vector.distance_to(verb.vector) < 0.18
-            and w.usage_frequency >= 2.0
-            and w.vector.dynamism >= 0.50
+            if w.id != verb.id and w.derivation.derivation_type == DerivationType.ROOT
+            and w.vector.distance_to(verb.vector) < 0.18 and w.usage_frequency >= 2.0 and w.vector.dynamism >= 0.50
         ]
-        if not competitors:
-            return verb, False
-
+        if not competitors: return verb, False
         return max(competitors, key=lambda w: w.usage_frequency), True
 
     @classmethod
@@ -1025,7 +903,6 @@ class GrammarEngine:
         para = paradigm or cls.discover_grammar_system(lang)
         v_cls = cls.classify_verb_dynamically(verb, para, lang)
         s_idx = lang.profile.synthesis_index
-
         if v_cls.thematic_marker and s_idx >= 0.35:
             theme_stem, is_tb = cls.apply_spatial_relator(verb, v_cls.thematic_marker, lang, category_type="inf")
             return (theme_stem if is_tb else verb), v_cls
@@ -1048,8 +925,8 @@ class GrammarEngine:
 
         para = cls.discover_grammar_system(lang) if lang else None
         v_cls = cls.classify_verb_dynamically(stem_word, para, lang) if para and lang else None
-
         used_non_concatenative = False
+
         if lang and is_past_or_perfective and v_cls:
             if v_cls.morph_strategy == "transfix":
                 trans_word, is_trans = cls.apply_root_pattern_transfix(stem_word, template="a_a", lang=lang)
@@ -1077,7 +954,6 @@ class GrammarEngine:
         prefix_stack = []
         suffix_stack = []
         free_particles = []
-
         active_temporal_op = None if used_non_concatenative else temporal_op
 
         ops_with_labels = [
@@ -1091,15 +967,12 @@ class GrammarEngine:
         p_prefix = 1.0 / (1.0 + math.exp(-8.0 * (h - 0.50)))
 
         for op, label in ops_with_labels:
-            if op is None:
-                continue
+            if op is None: continue
             if lang and cls.should_fuse_morpheme(current_host, op, lang):
                 affix_phonemes = cls.compress_bound_affix(op)
                 m_op = Morpheme(affix_phonemes, root_family_id=op.derivation.root_family_id, is_grammatical=True, stage=ClineStage.BOUND_AFFIX)
-                if random.random() < p_prefix:
-                    prefix_stack.append(m_op)
-                else:
-                    suffix_stack.append(m_op)
+                if random.random() < p_prefix: prefix_stack.append(m_op)
+                else: suffix_stack.append(m_op)
                 bound_labels.append(label)
                 current_host = Word(vector=stem_word.vector, phonemes=stem_word.phonemes + affix_phonemes, is_ephemeral=True)
             else:
@@ -1110,26 +983,20 @@ class GrammarEngine:
 
         m_stem = Morpheme(stem_word.phonemes, root_family_id=stem_word.derivation.root_family_id)
         all_morphemes = prefix_stack + [m_stem] + suffix_stack
-
         raw_phonemes = []
-        for m in all_morphemes:
-            raw_phonemes.extend(m.phonemes)
+        for m in all_morphemes: raw_phonemes.extend(m.phonemes)
 
         inflected_verb = Word(
-            vector=stem_word.vector,
-            phonemes=raw_phonemes,
-            morphemes=all_morphemes,
+            vector=stem_word.vector, phonemes=raw_phonemes, morphemes=all_morphemes,
             derivation=DerivationRecord(root_family_id=stem_word.derivation.root_family_id, derivation_type=DerivationType.AFFIXATION, local_parent_ids=(stem_word.id,)),
-            category=LexicalCategory.CONTENT_OPEN,
-            is_ephemeral=True,
+            category=LexicalCategory.CONTENT_OPEN, is_ephemeral=True,
         )
 
         prof = lang.profile if lang else None
         inertia = getattr(lang, "cultural_inertia", 1.0) if lang else 1.0
         repaired = ArticulatoryEnergyModel.repair_word(inflected_verb, prof, cultural_inertia=inertia) if prof else inflected_verb
-        stress_p = prof.stress_pattern if prof else StressPattern.PENULTIMATE
-        t_tier = prof.tone_tier if prof else 0
-        final_verb = SyllableEngine.apply_prosody(repaired, pattern=stress_p, tone_tier=t_tier)
+        stress_p = prof.stress_pattern if prof else StressPattern.NATURAL_WEIGHT
+        final_verb = SyllableEngine.apply_prosody(repaired, pattern=stress_p)
         return final_verb, free_particles, was_suppletive, bound_labels
 
     @classmethod
@@ -1137,42 +1004,23 @@ class GrammarEngine:
         para = paradigm or cls.discover_grammar_system(lang)
         conj: dict[str, str] = {}
         s_idx = lang.profile.synthesis_index
-
         theme_stem, v_cls = cls.get_thematic_verb_stem(verb, lang, para)
 
-        inf_op = None
-        if len(para.spatial_operators) > 3:
-            inf_op = para.spatial_operators[3]
-        elif para.complementizers:
-            inf_op = para.complementizers[0]
-        elif para.spatial_operators:
-            inf_op = para.spatial_operators[-1]
-
+        inf_op = para.spatial_operators[3] if len(para.spatial_operators) > 3 else (para.complementizers[0] if para.complementizers else (para.spatial_operators[-1] if para.spatial_operators else None))
         if inf_op and s_idx >= 0.35:
             inf_word, is_b = cls.apply_spatial_relator(theme_stem, inf_op, lang, category_type="inf")
             conj["Infinitive"] = f"/{inf_word.form}/" if is_b else f"/{inf_op.form} {theme_stem.form}/"
         else:
             conj["Infinitive"] = f"/{theme_stem.form}/"
 
-        ptcp_op = None
-        if len(para.spatial_operators) > 4:
-            ptcp_op = para.spatial_operators[4]
-        elif len(para.relativizers) > 0:
-            ptcp_op = para.relativizers[0]
-        elif len(para.spatial_operators) > 1:
-            ptcp_op = para.spatial_operators[1]
-
+        ptcp_op = para.spatial_operators[4] if len(para.spatial_operators) > 4 else (para.relativizers[0] if para.relativizers else None)
         if ptcp_op and s_idx >= 0.30:
             ptcp_word, is_b = cls.apply_spatial_relator(theme_stem, ptcp_op, lang, category_type="inf")
             conj["Participle"] = f"/{ptcp_word.form}/" if is_b else f"/{ptcp_op.form} {theme_stem.form}/"
 
-        persons = ["1sg", "2sg", "3sg", "1pl", "2pl", "3pl"]
-        for p_key in persons:
+        for p_key in ["1sg", "2sg", "3sg", "1pl", "2pl", "3pl"]:
             p_op = para.pronouns.get(p_key)
-            v_form, free_p, was_s, labels = cls.inflect_predicate(
-                verb, temporal_op=None, modal_op=None, agreement_op=None,
-                person_op=p_op, person_label=p_key, lang=lang, is_past_or_perfective=False
-            )
+            v_form, free_p, was_s, labels = cls.inflect_predicate(verb, temporal_op=None, modal_op=None, agreement_op=None, person_op=p_op, person_label=p_key, lang=lang, is_past_or_perfective=False)
             tokens = [p.form for p in free_p] + [v_form.form]
             conj[f"Pres.{p_key}"] = f"/{' '.join(tokens)}/"
 
@@ -1180,10 +1028,7 @@ class GrammarEngine:
         t_op = para.temporal_operators[0] if para.temporal_operators else None
         for p_key in ["1sg", "3sg", "1pl"]:
             p_op = para.pronouns.get(p_key)
-            v_form, free_p, was_s, labels = cls.inflect_predicate(
-                verb, temporal_op=t_op, modal_op=None, agreement_op=None,
-                person_op=p_op, person_label=p_key, lang=lang, is_past_or_perfective=True
-            )
+            v_form, free_p, was_s, labels = cls.inflect_predicate(verb, temporal_op=t_op, modal_op=None, agreement_op=None, person_op=p_op, person_label=p_key, lang=lang, is_past_or_perfective=True)
             tokens = [p.form for p in free_p] + [v_form.form]
             conj[f"{past_tag}.{p_key}"] = f"/{' '.join(tokens)}/"
 
@@ -1194,9 +1039,7 @@ class GrammarEngine:
         para = paradigm or cls.discover_grammar_system(lang)
         concord_grid: dict[str, str] = {}
         s_idx = lang.profile.synthesis_index
-
-        if not para.noun_classes or len(para.noun_classes) < 2:
-            return {"Base": f"/{adj.form}/"}
+        if not para.noun_classes or len(para.noun_classes) < 2: return {"Base": f"/{adj.form}/"}
 
         for n_cls in para.noun_classes:
             tag = f"Class {n_cls.class_id}"
@@ -1215,24 +1058,14 @@ class GrammarEngine:
         s_idx = lang.profile.synthesis_index
         pos = cls.get_part_of_speech(word)
 
-        if pos == "Particle":
-            return word.form, "Particle / Closed"
+        if pos == "Particle": return word.form, "Particle / Closed"
 
         if pos == "Verb":
             theme_stem, v_cls = cls.get_thematic_verb_stem(word, lang, para)
-            inf_op = None
-            if len(para.spatial_operators) > 3:
-                inf_op = para.spatial_operators[3]
-            elif para.complementizers:
-                inf_op = para.complementizers[0]
-            elif para.spatial_operators:
-                inf_op = para.spatial_operators[-1]
-
+            inf_op = para.spatial_operators[3] if len(para.spatial_operators) > 3 else (para.complementizers[0] if para.complementizers else None)
             if inf_op and s_idx >= 0.35:
                 inf_word, is_b = cls.apply_spatial_relator(theme_stem, inf_op, lang, category_type="inf")
-                if is_b:
-                    return inf_word.form, f"Verb [Infinitive] | {v_cls.label}"
-                return f"{inf_op.form} {theme_stem.form}", f"Verb [Infinitive] | {v_cls.label}"
+                return (inf_word.form if is_b else f"{inf_op.form} {theme_stem.form}"), f"Verb [Infinitive] | {v_cls.label}"
             return theme_stem.form, f"Verb [Bare Infinitive] | {v_cls.label}"
 
         if pos == "Adjective":
@@ -1240,20 +1073,16 @@ class GrammarEngine:
                 c1 = para.noun_classes[0]
                 if s_idx >= 0.30:
                     inflected_adj, is_bound = cls.apply_spatial_relator(word, c1.marker, lang, category_type="class")
-                    if is_bound:
-                        return inflected_adj.form, f"Adjective [Class 1 Concord] | {c1.label}"
-                    return f"{word.form} {c1.marker.form}", f"Adjective [Class 1 Concord] | {c1.label}"
-                return word.form, f"Adjective [Class 1 Concord (Analytic)] | {c1.label}"
+                    return (inflected_adj.form if is_bound else f"{word.form} {c1.marker.form}"), f"Adjective [Class 1 Concord] | {c1.label}"
             return word.form, "Adjective [Base Descriptor]"
 
         assigned_cls = cls.classify_noun_dynamically(word, para, lang)
         class_label = assigned_cls.label if assigned_cls else "Neutral"
-        citation_case = "Abs" if alignment == "Ergative-Absolutive" else "Nom"
+        citation_case = "Abs" if alignment == "ergative_absolutive" else "Nom"
 
         if assigned_cls and assigned_cls.marker and s_idx >= 0.35 and len(para.noun_classes) >= 2:
             lemma_word, is_bound = cls.apply_spatial_relator(word, assigned_cls.marker, lang, category_type="class")
-            if is_bound:
-                return lemma_word.form, f"Noun [{citation_case}.Sg] | {class_label}"
+            if is_bound: return lemma_word.form, f"Noun [{citation_case}.Sg] | {class_label}"
 
         return word.form, f"Noun [{citation_case}.Sg] | {class_label}"
 
@@ -1273,7 +1102,6 @@ class GrammarEngine:
             base_lemma = noun
 
         number_stems: dict[str, Word] = {"Sg": base_lemma}
-        
         for num_key in ("du", "pl"):
             num_label = num_key.capitalize()
             if num_key == "pl" and (noun.usage_frequency >= 2.0 or s_idx >= 0.40):
@@ -1297,7 +1125,7 @@ class GrammarEngine:
         acc_op = find_relator(SemanticVector(0.20, 0.00, 0.50, 0.30, 0.00, 0.00, 0.50))
 
         for num_label, n_stem in number_stems.items():
-            if alignment == "Ergative-Absolutive":
+            if alignment == "ergative_absolutive":
                 grid[f"Abs.{num_label}"] = f"/{n_stem.form}/"
                 if acc_op:
                     inflected, is_b = cls.apply_spatial_relator(n_stem, acc_op, lang, category_type="case")
@@ -1363,12 +1191,11 @@ class GrammarEngine:
 
         available_relators = paradigm.spatial_operators
         def find_closest_relator(target_vec: SemanticVector) -> Word | None:
-            if not available_relators:
-                return None
+            if not available_relators: return None
             return min(available_relators, key=lambda w: w.vector.distance_to(target_vec))
 
-        # 1. Subject & Direct Object Case Marking
-        if alignment == "Ergative-Absolutive":
+        # Differential Object Marking (DOM) driven by Animacy Hierarchy
+        if alignment == "ergative_absolutive":
             if direct_object:
                 erg_vec = SemanticVector(0.40, 0.80, 0.50, 0.85, 0.80, 0.30, 0.20)
                 subject.case_operator = find_closest_relator(erg_vec)
@@ -1379,7 +1206,7 @@ class GrammarEngine:
                 subject.case_operator = None
                 subject.case_label = "Abs"
         else:
-            # Nominative-Accusative
+            # Nominative-Accusative DOM
             if (s_idx >= 0.50 or (h < 0.35 and available_relators)) and available_relators:
                 nom_vec = SemanticVector(0.50, 0.80, 0.60, 0.50, 0.20, 0.50, 0.10)
                 subject.case_operator = find_closest_relator(nom_vec)
@@ -1389,9 +1216,9 @@ class GrammarEngine:
                 subject.case_label = "Nom(Ø)"
             
             if direct_object:
-                is_animate = (direct_object.head_noun.vector.animacy >= 0.55)
-                needs_accusative = (s_idx >= 0.45 or is_animate or h < 0.35)
-                
+                # DOM: Highly animate objects demand overt accusative marking
+                is_animate_dom = (direct_object.head_noun.vector.animacy >= 0.50)
+                needs_accusative = (s_idx >= 0.45 or is_animate_dom or h < 0.35)
                 if needs_accusative and available_relators:
                     acc_vec = SemanticVector(0.20, 0.00, 0.50, 0.30, 0.00, 0.00, 0.50)
                     direct_object.case_operator = find_closest_relator(acc_vec)
@@ -1413,20 +1240,12 @@ class GrammarEngine:
         complementizer = paradigm.complementizers[0] if (complement_clause and paradigm.complementizers) else None
 
         return Clause(
-            predicate=predicate,
-            valency=valency,
-            subject=subject,
-            direct_object=direct_object,
-            indirect_object=indirect_object,
-            oblique_location=oblique_location,
-            temporal_op=temporal_op,
-            modal_op=modal_op,
-            agreement_op=agreement_op,
-            person_marker=person_op,
-            person_label=person_label,
-            complement_clause=complement_clause,
-            complementizer=complementizer,
-            relativizer=relativizer,
-            is_subordinate=(relativizer is not None or complementizer is not None),
+            predicate=predicate, valency=valency, subject=subject,
+            direct_object=direct_object, indirect_object=indirect_object,
+            oblique_location=oblique_location, temporal_op=temporal_op,
+            modal_op=modal_op, agreement_op=agreement_op,
+            person_marker=person_op, person_label=person_label,
+            complement_clause=complement_clause, complementizer=complementizer,
+            relativizer=relativizer, is_subordinate=(relativizer is not None or complementizer is not None),
             is_past_or_perfective=is_past_or_perfective,
         )

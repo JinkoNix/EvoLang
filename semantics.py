@@ -136,7 +136,7 @@ class SemanticVector:
         c1 = self.coords
         c2 = other.coords
         if weights is None:
-            return math.sqrt(
+            val = (
                 (c1[0] - c2[0]) ** 2 +
                 (c1[1] - c2[1]) ** 2 +
                 (c1[2] - c2[2]) ** 2 +
@@ -145,30 +145,33 @@ class SemanticVector:
                 (c1[5] - c2[5]) ** 2 +
                 (c1[6] - c2[6]) ** 2
             )
+            return math.sqrt(max(0.0, val))
         w0, w1, w2, w3, w4, w5, w6 = weights
-        return math.sqrt(
-            w0 * (c1[0] - c2[0]) ** 2 +
-            w1 * (c1[1] - c2[1]) ** 2 +
-            w2 * (c1[2] - c2[2]) ** 2 +
-            w3 * (c1[3] - c2[3]) ** 2 +
-            w4 * (c1[4] - c2[4]) ** 2 +
-            w5 * (c1[5] - c2[5]) ** 2 +
-            w6 * (c1[6] - c2[6]) ** 2
+        val = (
+            max(0.0, w0) * (c1[0] - c2[0]) ** 2 +
+            max(0.0, w1) * (c1[1] - c2[1]) ** 2 +
+            max(0.0, w2) * (c1[2] - c2[2]) ** 2 +
+            max(0.0, w3) * (c1[3] - c2[3]) ** 2 +
+            max(0.0, w4) * (c1[4] - c2[4]) ** 2 +
+            max(0.0, w5) * (c1[5] - c2[5]) ** 2 +
+            max(0.0, w6) * (c1[6] - c2[6]) ** 2
         )
+        return math.sqrt(max(0.0, val))
 
     def weighted_distance_to(self, other: SemanticVector, weights: Sequence[float]) -> float:
         c1 = self.coords
         c2 = other.coords
         w0, w1, w2, w3, w4, w5, w6 = weights
-        return math.sqrt(
-            w0 * (c1[0] - c2[0]) ** 2 +
-            w1 * (c1[1] - c2[1]) ** 2 +
-            w2 * (c1[2] - c2[2]) ** 2 +
-            w3 * (c1[3] - c2[3]) ** 2 +
-            w4 * (c1[4] - c2[4]) ** 2 +
-            w5 * (c1[5] - c2[5]) ** 2 +
-            w6 * (c1[6] - c2[6]) ** 2
+        val = (
+            max(0.0, w0) * (c1[0] - c2[0]) ** 2 +
+            max(0.0, w1) * (c1[1] - c2[1]) ** 2 +
+            max(0.0, w2) * (c1[2] - c2[2]) ** 2 +
+            max(0.0, w3) * (c1[3] - c2[3]) ** 2 +
+            max(0.0, w4) * (c1[4] - c2[4]) ** 2 +
+            max(0.0, w5) * (c1[5] - c2[5]) ** 2 +
+            max(0.0, w6) * (c1[6] - c2[6]) ** 2
         )
+        return math.sqrt(max(0.0, val))
 
     def drift(self, delta: Sequence[float]) -> SemanticVector:
         c = self.coords
