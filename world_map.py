@@ -1,11 +1,5 @@
 """
-world_map.py — Continuous 2D Physical Geography, Strategic Urban Fortress Dynamics, and Speciation.
-Features:
-- Organic Domestic Urbanization: Empires build secondary provincial cities in their own fertile valleys.
-- True Frontier & Island Expeditions: Pioneers colonize UNCLAIMED wilderness or offshore islands.
-- Speciation by Geographic Isolation: Outposts only fork into new languages if isolated across water or mountain ranges.
-- City-to-City Logistical Warfare: Frontier sieges batter walls progressively; armistices enforce peace.
-- Topographic Power Voronoi: Pure Euclidean geometry; mountains and sea trenches constrain expansion.
+world_map.py — Continuous 2D Physical Geography, Orographic Climate, and Speciation.
 """
 
 from __future__ import annotations
@@ -26,7 +20,6 @@ from word import Word, LexicalCategory
 
 @dataclass
 class SettlementNode:
-    """A permanent urban center with discrete local population, fortifications, and history."""
     name: str
     x: float
     y: float
@@ -46,7 +39,6 @@ class SettlementNode:
 
 @dataclass
 class RoadEdge:
-    """A direct transport connection between two cities with wear/quality level."""
     city_a: str
     city_b: str
     x0: float
@@ -59,7 +51,6 @@ class RoadEdge:
 
 @dataclass
 class EconomyProfile:
-    """Normalized 100% breakdown of subsistence resource streams."""
     grain: float = 0.0
     livestock: float = 0.0
     marine: float = 0.0
@@ -76,24 +67,6 @@ class Environment:
     season_phase: float = 0.0
     _vegetation: float | None = field(default=None, repr=False)
     _population: float | None = field(default=None, repr=False)
-
-    def __init__(
-        self,
-        temperature: float = 0.50,
-        humidity: float = 0.50,
-        altitude: float = 0.20,
-        ambient_noise: float = 0.20,
-        season_phase: float = 0.0,
-        vegetation: float | None = None,
-        population: float | None = None,
-    ):
-        self.temperature = float(temperature)
-        self.humidity = float(humidity)
-        self.altitude = float(altitude)
-        self.ambient_noise = float(ambient_noise)
-        self.season_phase = float(season_phase)
-        self._vegetation = float(vegetation) if vegetation is not None else None
-        self._population = float(population) if population is not None else None
 
     @property
     def vegetation(self) -> float:
@@ -121,17 +94,31 @@ class Environment:
         if self._vegetation is not None:
             return self._vegetation
 
-        f_temp = 1.0 / (1.0 + math.exp(-8.0 * (self.temperature - 0.22)))
-        f_hum = 1.0 / (1.0 + math.exp(-7.0 * (self.humidity - 0.20)))
-        f_alt = math.exp(-2.80 * (max(0.0, self.altitude - 0.30) ** 2))
-        seasonal_growth = 1.0 + 0.25 * self.season_phase
-        climax_veg = f_temp * f_hum * f_alt * seasonal_growth
+        if self.altitude <= 0.0:
+            return 0.0
+
+        temp_effective = max(0.0, self.temperature)
+        pet = max(0.08, (temp_effective ** 1.3) * 1.40)
+        aridity_index = self.humidity / pet
+
+        if aridity_index < 0.12:
+            climax_veg = 0.02 + 0.15 * aridity_index
+        elif aridity_index < 0.40:
+            climax_veg = 0.15 + 0.50 * (aridity_index - 0.12)
+        elif aridity_index < 0.85:
+            climax_veg = 0.35 + 0.65 * (aridity_index - 0.40)
+        else:
+            climax_veg = min(0.95, 0.65 + 0.30 * min(1.0, aridity_index - 0.85))
+
+        treeline_factor = math.exp(-3.50 * (max(0.0, self.altitude - 0.35) ** 2))
+        thermal_growth = 1.0 / (1.0 + math.exp(-8.0 * (self.temperature - 0.22)))
+        climax_veg *= treeline_factor * thermal_growth * (1.0 + 0.15 * self.season_phase)
 
         attn = cultural_attention or [1.0] * 7
-        w_con, w_pot = attn[0], attn[3]
-        deforestation_rate = (w_con * 0.70 + w_pot * 0.50)
-        depletion = math.exp(-0.70 * deforestation_rate * (max(0.0, population) ** 1.3))
-        return round(max(0.01, min(0.99, climax_veg * depletion)), 3)
+        deforestation_rate = attn[0] * 0.60 + attn[3] * 0.40
+        depletion = math.exp(-0.55 * deforestation_rate * (max(0.0, population) ** 1.25))
+
+        return round(max(0.01, min(0.98, climax_veg * depletion)), 3)
 
     def generate_profile(
         self,
@@ -145,21 +132,31 @@ class Environment:
         pop = max(0.0, float(population))
         veg = vegetation if vegetation is not None else self.emergent_vegetation(population=pop, cultural_attention=cultural_attention)
 
-        rho_air = math.exp(-2.40 * max(0.0, self.altitude)) * math.exp(-0.25 * (self.temperature - 0.50))
-        alpha_damp = 1.0 / (1.0 + math.exp(-5.0 * ((veg * 0.65 + self.humidity * 0.35) - 0.50)))
+        # 1. Barometric Density and Viscous-Thermal Air Dissipation
+        rho_air = math.exp(-0.90 * max(0.0, self.altitude)) * math.exp(-0.25 * (self.temperature - 0.50))
+        
+        # 2. Acoustic Adaptation: Foliage scattering + warm vapor acoustic absorption
+        canopy_absorption = veg * 0.60 + self.humidity * 0.40
+        thermal_viscous_damping = math.tanh(max(0.0, self.temperature) * 1.5) * self.humidity
+        total_acoustic_damping = 0.55 * canopy_absorption + 0.45 * thermal_viscous_damping
 
-        s_comp_driver = alpha_damp + (max(0.0, self.ambient_noise) * 0.35) - ((1.0 - rho_air) * 0.60) - 0.40
-        syllable_complexity = round(0.10 + (0.80 / (1.0 + math.exp(5.0 * s_comp_driver))), 3)
-        max_transition_cost = round(2.0 + (3.80 * syllable_complexity), 2)
-
+        # 3. Alpine & Arid Channel Opening
         aridity = max(0.0, 1.0 - self.humidity)
-        vpd = (max(0.0, self.temperature) ** 1.2) * aridity * 1.50
-        v_driver = vpd + (max(0.0, self.ambient_noise) * 0.15) - (alpha_damp * 0.15) - 0.35
-        d_min_vowel = round(0.12 + (0.22 / (1.0 + math.exp(-6.0 * v_driver))), 3)
-        d_min_consonant = round(0.22 + (0.12 / (1.0 + math.exp(-5.0 * (rho_air - 0.60)))), 3)
+        cold_steppe = max(0.0, 0.45 - self.temperature) * 1.5
+        altitude_drive = max(0.0, self.altitude) * 1.4
+
+        # Continuous Complexity Driver: maps into [0.12, 0.85]
+        s_comp_driver = (altitude_drive + aridity * 0.80 + cold_steppe * 0.70) - (total_acoustic_damping * 2.20)
+        syllable_complexity = round(0.12 + (0.73 / (1.0 + math.exp(-4.5 * s_comp_driver))), 3)
+        max_transition_cost = round(1.80 + (3.60 * syllable_complexity), 2)
+
+        # 4. Phonemic Separation Wells
+        channel_noise = (self.ambient_noise * 0.35 + aridity * 0.30) / max(0.20, rho_air)
+        d_min_vowel = round(max(0.18, min(0.38, 0.22 + 0.16 * channel_noise)), 3)
+        d_min_consonant = round(0.20 + (0.15 / (1.0 + math.exp(-4.5 * (rho_air - 0.60)))), 3)
 
         p_centralize = 1.0 / (1.0 + math.exp(-8.0 * (pop - 0.60)))
-        vowel_reduction_mode = "none" if syllable_complexity < 0.25 else ("centralize" if random.random() < p_centralize else "inventory_snap")
+        vowel_reduction_mode = "none" if syllable_complexity < 0.28 else ("centralize" if random.random() < p_centralize else "inventory_snap")
 
         ep_height = round(max(0.0, min(6.0, 6.0 * (1.0 - self.temperature))), 2)
         epenthetic_vowel = (ep_height, 1.0, 0.0)
@@ -179,7 +176,7 @@ class Environment:
             (w_soc * 1.05 + w_val * 0.50) +
             (aridity * 0.70) +
             (self.altitude * 0.45) -
-            (alpha_damp * 0.55) - 0.25
+            (total_acoustic_damping * 0.75) - 0.25
         )
         acoustic_roughness = round(0.10 + (0.80 / (1.0 + math.exp(-3.5 * rough_driver))), 3)
 
@@ -212,62 +209,69 @@ class Environment:
 
 
 class TerrainField:
-    def __init__(self, elevation_fn: Callable[[float, float], float] | None = None):
-        self.elevation_fn = elevation_fn or self._default_continental_heightmap
+    def __init__(self, seed: int = 42):
+        self.seed = seed
+        self.wind_dir = np.array([0.85, -0.15], dtype=np.float32)
+        self.wind_dir /= np.linalg.norm(self.wind_dir)
 
-    @staticmethod
-    def _default_continental_heightmap(x: float, y: float) -> float:
-        dist_to_spine = math.sqrt(((x - 0.66) * 1.6) ** 2 + ((y - 0.75) * 1.3) ** 2)
-        mountain_peak = 0.92 * math.exp(-(dist_to_spine ** 2) / 0.035)
+    def elevation_at(self, x: float, y: float, epoch: int = 0) -> float:
+        c1 = math.sin(x * 3.8 + 0.4) * math.cos(y * 3.2 - 0.2)
+        c2 = 0.50 * math.sin(x * 7.5 - 1.2) * math.sin(y * 6.8 + 0.8)
+        c3 = 0.25 * math.cos(x * 14.0 + y * 12.0)
+        continental_plate = 0.42 * (c1 + c2 + c3)
 
-        in_continent = max(0.0, min(1.0, (x - 0.18) / 0.54))
-        continental_mass = 0.35 * math.sin(in_continent * math.pi) if x <= 0.74 else 0.0
+        spine_dist = math.sqrt(((x - 0.62) * 1.7) ** 2 + ((y - 0.70) * 1.3) ** 2)
+        mountain_chain = 0.88 * math.exp(-(spine_dist ** 2) / 0.028)
 
-        sea_trench = 0.45 * math.exp(-((x - 0.78) ** 2) / 0.002)
+        trench = 0.40 * math.exp(-((x - 0.76) ** 2) / 0.003)
+        island_dist = math.sqrt(((x - 0.84) * 2.2) ** 2 + ((y - 0.48) * 1.1) ** 2)
+        island_arc = 0.36 * math.exp(-(island_dist ** 2) / 0.020)
 
-        dist_to_island = math.sqrt(((x - 0.855) * 2.2) ** 2 + ((y - 0.50) * 0.9) ** 2)
-        island_arc = 0.34 * math.exp(-(dist_to_island ** 2) / 0.025)
+        west_shelf = max(0.0, (0.16 - x) * 2.8)
+        east_abyss = max(0.0, (x - 0.90) * 3.6)
 
-        west_drop = max(0.0, (0.19 - x) * 2.5)
-        east_drop = max(0.0, (x - 0.89) * 3.5)
-
-        raw_elevation = mountain_peak + continental_mass - sea_trench + island_arc - west_drop - east_drop
-        return round(raw_elevation, 3)
+        base_z = continental_plate + mountain_chain - trench + island_arc - west_shelf - east_abyss
+        sea_level_pulse = 0.05 * math.sin(2.0 * math.pi * epoch / 200.0)
+        return float(np.clip(base_z - sea_level_pulse, -1.0, 1.2))
 
     def sample_environment(self, x: float, y: float, epoch: int = 0) -> Environment:
-        clamped_x = max(0.0, min(1.0, float(x)))
-        clamped_y = max(0.0, min(1.0, float(y)))
-        altitude = self.elevation_fn(clamped_x, clamped_y)
+        cx = max(0.0, min(1.0, float(x)))
+        cy = max(0.0, min(1.0, float(y)))
+        altitude = self.elevation_at(cx, cy, epoch=epoch)
 
         season_phase = math.sin(2.0 * math.pi * (epoch % 12) / 12.0)
-        macro_climate_pulse = 0.14 * math.sin(2.0 * math.pi * epoch / 160.0) + 0.06 * math.sin(2.0 * math.pi * epoch / 45.0)
+        pluvial_pulse = 0.12 * math.sin(2.0 * math.pi * epoch / 180.0)
 
-        dist_to_coast = min(clamped_x, abs(clamped_x - 0.78), 1.0 - clamped_x)
-        base_temp = 0.95 - (clamped_y * 0.55) + (season_phase * 0.10) + (macro_climate_pulse * 0.06)
+        base_temp = 0.96 - (cy * 0.58) + (season_phase * 0.08)
         lapse_cooling = max(0.0, altitude) * 0.55
-        continental_temp = base_temp - lapse_cooling
-        marine_moderation = 0.35 * max(0.0, 1.0 - dist_to_coast * 3.5)
-        temperature = round(continental_temp + marine_moderation * (0.50 - continental_temp), 3)
+        temperature = round(base_temp - lapse_cooling, 3)
 
-        base_humidity = 1.0 - (dist_to_coast * 1.30) + (macro_climate_pulse * 0.14)
-        is_leeward_plain = (0.68 <= clamped_x <= 0.75 and altitude < 0.30)
-        rain_shadow = 0.25 if is_leeward_plain else 0.0
-        is_island = (clamped_x >= 0.82 and altitude > 0.0)
-        min_hum = 0.65 if is_island else (0.45 if dist_to_coast < 0.10 else 0.08)
-        humidity = round(max(min_hum, base_humidity - rain_shadow), 3)
+        dist_to_coast = min(cx, abs(cx - 0.76), 1.0 - cx)
+        ocean_moisture = 1.0 - min(0.85, dist_to_coast * 1.45)
 
-        ridge_wind = max(0.0, altitude) * 0.65
-        surf_noise = max(0.0, (0.15 - dist_to_coast) * 3.0) if dist_to_coast < 0.15 else 0.0
-        ambient_noise = round(min(0.99, ridge_wind + surf_noise), 3)
+        eps = 0.02
+        z_upwind = self.elevation_at(cx - self.wind_dir[0] * eps, cy - self.wind_dir[1] * eps, epoch=epoch)
+        slope_lift = (altitude - z_upwind) / eps
+
+        if slope_lift > 0.0:
+            orographic_effect = min(0.35, slope_lift * 0.06)
+        else:
+            orographic_effect = max(-0.55, slope_lift * 0.12)
+
+        hadley_subsidence = 0.22 * math.exp(-((cy - 0.32) ** 2) / 0.018)
+        raw_humidity = ocean_moisture + orographic_effect - hadley_subsidence + pluvial_pulse
+        min_hum = 0.55 if altitude <= 0.0 else (0.40 if dist_to_coast < 0.08 else 0.04)
+        humidity = round(max(min_hum, min(0.98, raw_humidity)), 3)
+
+        ambient_noise = round(min(0.99, max(0.0, altitude) * 0.60 + max(0.0, 0.12 - dist_to_coast) * 2.5), 3)
 
         env = Environment(
             temperature=temperature,
             humidity=humidity,
-            altitude=altitude,
+            altitude=round(altitude, 3),
             ambient_noise=ambient_noise,
             season_phase=round(season_phase, 2),
         )
-
         if altitude <= 0.0:
             env.vegetation = 0.0
 
@@ -275,8 +279,6 @@ class TerrainField:
 
 
 class Civilization:
-    """A living speech community situated at continuous coordinates with dynamic demographics and settlements."""
-
     def __init__(
         self,
         name: str,
@@ -290,11 +292,30 @@ class Civilization:
     ):
         self.name = name
         self.language = language
-        self.x = max(0.02, min(0.98, float(x)))
-        self.y = max(0.02, min(0.98, float(y)))
+        self.terrain = terrain
+
+        # Clamp and guarantee terrestrial placement (never underwater)
+        cx = max(0.04, min(0.96, float(x)))
+        cy = max(0.04, min(0.96, float(y)))
+        
+        if self.terrain.elevation_at(cx, cy, epoch=founded_epoch) <= 0.04:
+            best_d = 999.0
+            best_pt = (cx, cy)
+            for r_step in range(-12, 13):
+                for c_step in range(-12, 13):
+                    tx = max(0.04, min(0.96, cx + c_step * 0.02))
+                    ty = max(0.04, min(0.96, cy + r_step * 0.02))
+                    if self.terrain.elevation_at(tx, ty, epoch=founded_epoch) >= 0.08:
+                        d = math.hypot(tx - cx, ty - cy)
+                        if d < best_d:
+                            best_d = d
+                            best_pt = (tx, ty)
+            cx, cy = best_pt
+
+        self.x = cx
+        self.y = cy
         self.vx = 0.0
         self.vy = 0.0
-        self.terrain = terrain
         self.population = float(population)
         self.lineage = lineage or name
         self.founded_epoch = founded_epoch
@@ -303,13 +324,13 @@ class Civilization:
         self.territory_radius = 0.08
         self.claimed_cells_count = 16
         self.infrastructure_level = 0.8
-        
         self.economy = EconomyProfile()
-        
-        # Primordial capital starts with permanent stone status and Level 1.5 walls
+
         self.settlements: list[SettlementNode] = [
             SettlementNode(
-                name=f"{name}", x=self.x, y=self.y,
+                name=f"{name}",
+                x=self.x,
+                y=self.y,
                 local_pop=float(population),
                 fortification_level=1.5,
                 local_infrastructure=1.0,
@@ -341,8 +362,8 @@ class Civilization:
 
             if alt <= 0.0:
                 depth_yield = 1.60 + min(1.20, abs(alt) * 3.5)
-                naval_efficiency = (0.75 + 0.08 * math.log(1.0 + self.infrastructure_level))
-                total_marine += depth_yield * naval_efficiency
+                naval_eff = 0.75 + 0.08 * math.log(1.0 + self.infrastructure_level)
+                total_marine += depth_yield * naval_eff
             else:
                 agri_dist = ((hum - 0.55) / 0.22) ** 2 + ((veg - 0.45) / 0.22) ** 2 + ((temp - 0.55) / 0.22) ** 2
                 raw_arable = math.exp(-agri_dist) * max(0.0, 1.0 - alt * 1.3)
@@ -352,8 +373,8 @@ class Civilization:
                 total_herd += math.exp(-pastoral_dist) * max(0.0, 1.0 - alt * 0.8)
 
                 if dist_coast < 0.14:
-                    coastal_proximity = (0.14 - dist_coast) / 0.14
-                    total_marine += (coastal_proximity * 1.80) * (0.80 + hum * 0.40)
+                    coastal_prox = (0.14 - dist_coast) / 0.14
+                    total_marine += (coastal_prox * 1.80) * (0.80 + hum * 0.40)
 
                 if alt > 0.30:
                     total_minerals += (alt - 0.30) * 2.5
@@ -372,7 +393,7 @@ class Civilization:
             livestock=round((h_val / tot_raw) * 100.0, 1),
             marine=round((m_val / tot_raw) * 100.0, 1),
             minerals=round((min_val / tot_raw) * 100.0, 1),
-            total_yield=round(tot_raw, 3)
+            total_yield=round(tot_raw, 3),
         )
 
         w = list(self.language.cultural_attention)
@@ -382,208 +403,153 @@ class Civilization:
         self.food_capacity = round(max(0.25, 0.40 + land_carrying), 3)
         self.food_deficit = round(max(0.0, self.population - self.food_capacity), 3)
 
-        # 1. DAMPED PSYCHOLOGY (Using tanh to prevent Sociality & Dynamism explosion)
         pop_eff = math.tanh(max(0.0, self.population) / 1.8)
         deficit_ratio = (self.food_deficit / max(0.20, self.food_capacity)) if self.food_deficit > 0.0 else 0.0
 
         if deficit_ratio > 0.02:
-            w[2] = max(0.30, w[2] - deficit_ratio * 0.04)  # Valence drops gradually
-            w[4] = min(2.20, w[4] + deficit_ratio * 0.03)  # Dynamism rises
-            w[3] = min(2.20, w[3] + deficit_ratio * 0.03)  # Potency rises
-            w[5] = max(0.30, w[5] - deficit_ratio * 0.02)  # Sociality frays
+            w[2] = max(0.30, w[2] - deficit_ratio * 0.04)
+            w[4] = min(2.20, w[4] + deficit_ratio * 0.03)
+            w[3] = min(2.20, w[3] + deficit_ratio * 0.03)
+            w[5] = max(0.30, w[5] - deficit_ratio * 0.02)
         else:
             w[0] += (g_val * 0.04 + min_val * 0.03)
             w[1] += (h_val * 0.04)
             w[4] += (m_val * 0.05)
-            w[5] += pop_eff * 0.015  # Bounded social scaling!
+            w[5] += pop_eff * 0.015
             w[6] += (m_val * 0.05 + h_val * 0.02)
 
-        # 1B. THERMOSTATIC EQUILIBRIUM: 1% pull toward baseline 1.0 prevents permanent 2.50 pegging
         for idx in range(7):
             w[idx] += 0.010 * (1.0 - w[idx])
 
         tot_w = sum(w) or 7.0
         self.language.cultural_attention = [round(max(0.30, min(2.20, 7.0 * (v / tot_w))), 3) for v in w]
 
-        # 2. SCALED MAINTENANCE ENGINE: Towns of 3k-10k sustain themselves
-        ENTROPY_DECAY = 0.025
         for s in self.settlements:
             maintenance = min(0.06, (s.local_pop / 0.04) * 0.030)
-            net_repair = maintenance - ENTROPY_DECAY
-            # Walls can repair up from 0.0
+            net_repair = maintenance - 0.025
             s.fortification_level = round(min(5.0, max(0.0, s.fortification_level + net_repair)), 2)
             s.local_infrastructure = round(min(15.0, max(0.5, s.local_infrastructure + net_repair * 0.5)), 2)
 
-        # 3. CONURBATION (Merging adjacent cities)
         current_epoch = getattr(world_map, "current_epoch", self.founded_epoch)
-        merge_dist = 0.035
-        merged_any = True
-        while merged_any and len(self.settlements) > 1:
-            merged_any = False
-            for i in range(len(self.settlements)):
-                for j in range(i + 1, len(self.settlements)):
-                    s1, s2 = self.settlements[i], self.settlements[j]
-                    dist = math.sqrt((s1.x - s2.x)**2 + (s1.y - s2.y)**2)
-                    if dist < merge_dist:
-                        keeper = s1 if s1.local_pop >= s2.local_pop else s2
-                        absorbed = s2 if keeper is s1 else s1
-                        keeper.local_pop = round(keeper.local_pop + absorbed.local_pop, 3)
-                        keeper.fortification_level = round(max(keeper.fortification_level, absorbed.fortification_level) + 0.20, 2)
-                        keeper.history.append(f"Epoch {current_epoch}: Conurbated with neighboring {absorbed.name}.")
-                        base_name = keeper.name.replace("Greater ", "").split()[0]
-                        if keeper.local_pop >= 0.40:
-                            keeper.name = f"Greater {base_name}"
-                        self.settlements.remove(absorbed)
-                        merged_any = True
-                        break
-                if merged_any:
-                    break
+        retained_settlements = []
+        absorbed_names = set()
 
-        # 4. DOMESTIC URBANIZATION (Empires build secondary cities in outer valleys)
+        for i, s1 in enumerate(self.settlements):
+            if s1.name in absorbed_names:
+                continue
+            for s2 in self.settlements[i + 1:]:
+                if s2.name in absorbed_names:
+                    continue
+                if math.hypot(s1.x - s2.x, s1.y - s2.y) < 0.035:
+                    if s1.local_pop >= s2.local_pop:
+                        s1.local_pop = round(s1.local_pop + s2.local_pop, 3)
+                        s1.fortification_level = round(max(s1.fortification_level, s2.fortification_level) + 0.20, 2)
+                        s1.history.append(f"Epoch {current_epoch}: Absorbed {s2.name}.")
+                        absorbed_names.add(s2.name)
+                    else:
+                        s2.local_pop = round(s2.local_pop + s1.local_pop, 3)
+                        s2.fortification_level = round(max(s1.fortification_level, s2.fortification_level) + 0.20, 2)
+                        s2.history.append(f"Epoch {current_epoch}: Absorbed {s1.name}.")
+                        absorbed_names.add(s1.name)
+                        break
+
+            if s1.name not in absorbed_names:
+                retained_settlements.append(s1)
+
+        self.settlements = retained_settlements
+
         has_economy = (self.economy.grain >= 10.0 or self.economy.marine >= 15.0 or self.economy.minerals >= 15.0)
         is_sedentary = (has_economy and self.infrastructure_level >= 0.7)
+        max_cities = min(8, 1 + int(self.population / (0.25 + 0.02 * self.infrastructure_level))) if is_sedentary else 1
 
-        # 1 city per ~25,000 citizens (allows realms of 60k-100k to have 2-4 cities)
-        pop_per_city = 0.25 + 0.02 * self.infrastructure_level
-        max_allowed_cities = min(8, 1 + int(self.population / pop_per_city)) if is_sedentary else 1
-
-        if is_sedentary and len(self.settlements) < max_allowed_cities and cell_breakdowns:
+        if is_sedentary and len(self.settlements) < max_cities and cell_breakdowns:
             candidate_valleys = []
             for c in cell_breakdowns:
                 if c["alt"] >= 0.06:
-                    dist_to_cities = [math.hypot(s.x - c["gx"], s.y - c["gy"]) for s in self.settlements]
-                    min_dist = min(dist_to_cities) if dist_to_cities else 1.0
-                    
-                    # Safe distance from existing towns (0.065 to 0.25)
-                    if 0.065 <= min_dist <= 0.25:
-                        agri_dist = ((c["hum"] - 0.55) / 0.22) ** 2 + ((c["veg"] - 0.45) / 0.22) ** 2
-                        arable_score = math.exp(-agri_dist)
+                    dist_to_existing = min(math.hypot(s.x - c["gx"], s.y - c["gy"]) for s in self.settlements)
+                    if 0.065 <= dist_to_existing <= 0.25:
+                        agri_d = ((c["hum"] - 0.55) / 0.22) ** 2 + ((c["veg"] - 0.45) / 0.22) ** 2
+                        arable_score = math.exp(-agri_d)
                         port_score = 1.2 if c["dist_coast"] < 0.08 else 0.0
-                        mineral_score = (c["alt"] - 0.30) * 1.2 if c["alt"] > 0.30 else 0.0
-                        candidate_valleys.append((arable_score + port_score + mineral_score, c["gx"], c["gy"]))
+                        candidate_valleys.append((arable_score + port_score, c["gx"], c["gy"]))
 
             if candidate_valleys:
                 candidate_valleys.sort(key=lambda item: item[0], reverse=True)
                 _, bx, by = candidate_valleys[0]
-                
-                # Any city with at least 4,000 citizens can sponsor a new town
                 eligible_cities = [s for s in self.settlements if s.local_pop >= 0.04]
                 if eligible_cities:
-                    nearest_city = min(eligible_cities, key=lambda s: math.hypot(s.x - bx, s.y - by))
-                    seed_pop = round(min(0.04, max(0.015, nearest_city.local_pop * 0.15)), 3)
-                    nearest_city.local_pop = round(nearest_city.local_pop - seed_pop, 3)
+                    sponsor = min(eligible_cities, key=lambda s: math.hypot(s.x - bx, s.y - by))
+                    seed_pop = round(min(0.04, max(0.015, sponsor.local_pop * 0.15)), 3)
+                    sponsor.local_pop = round(sponsor.local_pop - seed_pop, 3)
 
-                    town_number = len(self.settlements) + 1
                     new_city = SettlementNode(
-                        name=f"{self.name} City-{town_number}",
-                        x=bx, y=by, local_pop=seed_pop,
+                        name=f"{self.name} City-{len(self.settlements) + 1}",
+                        x=bx,
+                        y=by,
+                        local_pop=seed_pop,
                         fortification_level=1.0,
                         local_infrastructure=1.0,
-                        is_capital=False, is_permanent=True,
+                        is_capital=False,
+                        is_permanent=True,
                         founder=self.name,
                         founded_epoch=current_epoch,
-                        history=[f"Founded at Epoch {current_epoch} as domestic province of {self.name}."]
+                        history=[f"Founded at Epoch {current_epoch} as domestic province."]
                     )
                     self.settlements.append(new_city)
                     if world_map is not None:
-                        is_naval = self.terrain.sample_environment((nearest_city.x + bx) * 0.5, (nearest_city.y + by) * 0.5).altitude <= 0.0
-                        world_map._ensure_road_edge(nearest_city, new_city, is_naval=is_naval, traffic_boost=0.30)
-                        world_map.event_log.append(f"Urban Expansion: '{self.name}' established domestic city '{new_city.name}'!")
-
-        # 5. Inter-City Migration
-        if len(self.settlements) > 1:
-            for s in self.settlements:
-                local_capacity = 0.40 + 0.12 * s.local_infrastructure
-                if s.local_pop > local_capacity:
-                    surplus = (s.local_pop - local_capacity) * 0.12
-                    destination = min(
-                        (other for other in self.settlements if other != s),
-                        key=lambda o: math.hypot(o.x - s.x, o.y - s.y)
-                    )
-                    s.local_pop = round(s.local_pop - surplus, 3)
-                    destination.local_pop = round(destination.local_pop + surplus, 3)
+                        is_naval = self.terrain.elevation_at((sponsor.x + bx) * 0.5, (sponsor.y + by) * 0.5) <= 0.0
+                        world_map._ensure_road_edge(sponsor, new_city, is_naval=is_naval, traffic_boost=0.30)
+                        world_map.event_log.append(f"Urban Expansion: '{self.name}' founded '{new_city.name}'.")
 
         self.population = round(sum(s.local_pop for s in self.settlements), 3)
 
     def step_demographics(self, delta_time: float = 1.0) -> None:
-        # GEOGRAPHICALLY DIVERSIFIED CITY GROWTH:
-        # River valleys grow large; alpine mountain outposts stay small!
         attn = self.language.cultural_attention
-        w_pot = attn[3]
-        w_dyn = attn[4]
-
-        infra_fertility = 0.18 * math.tanh(self.infrastructure_level / 5.0)
-        base_fertility = (0.045 + infra_fertility) * (1.0 + 0.15 * (w_pot - 1.0) + 0.10 * (w_dyn - 1.0))
+        base_fertility = (0.045 + 0.18 * math.tanh(self.infrastructure_level / 5.0)) * (1.0 + 0.15 * (attn[3] - 1.0))
         deficit_ratio = (self.food_deficit / max(0.10, self.population)) if self.food_deficit > 0.0 else 0.0
 
         for s in self.settlements:
             s_env = self.terrain.sample_environment(s.x, s.y)
-            # Local environmental fertility factor
-            fert = math.exp(-(((s_env.humidity - 0.55)/0.22)**2 + ((s_env.vegetation - 0.45)/0.22)**2)) * max(0.1, 1.0 - s_env.altitude * 1.2)
+            fert = math.exp(-(((s_env.humidity - 0.55) / 0.22) ** 2 + ((s_env.vegetation - 0.45) / 0.22) ** 2)) * max(0.1, 1.0 - s_env.altitude * 1.2)
             local_cap = 0.20 + 1.30 * fert + 0.12 * s.local_infrastructure
+            fertility_mult = 1.60 if s.local_pop < local_cap * 0.40 else 1.00
 
-            # Frontier boom: New outposts with plenty of open land grow 60% faster!
-            is_frontier_boom = (s.local_pop < local_cap * 0.40)
-            fertility_multiplier = 1.60 if is_frontier_boom else 1.00
-
-            d_local = base_fertility * fertility_multiplier * s.local_pop * (1.0 - (s.local_pop / max(0.15, local_cap)))
-            
+            d_local = base_fertility * fertility_mult * s.local_pop * (1.0 - (s.local_pop / max(0.15, local_cap)))
             if deficit_ratio > 0.0:
                 d_local -= s.local_pop * min(0.20, deficit_ratio * 0.15)
-            
+
             s.local_pop = round(max(0.002, s.local_pop + d_local * delta_time), 3)
 
         self.population = round(sum(s.local_pop for s in self.settlements), 3)
 
-    def _calculate_food_and_territory(self, env: Environment, veg: float) -> None:
-        attn = self.language.cultural_attention
-        w_dyn, w_ext = attn[4], attn[6]
-        base_radius = 0.05 + 0.07 * math.sqrt(max(0.01, self.population)) * (w_ext / 1.0)
-        hunger_push = 1.0 + 0.50 * self.food_deficit
-        altitude_choke = max(0.40, 1.0 - env.altitude * 0.50)
-        self.territory_radius = round(base_radius * hunger_push * altitude_choke, 3)
-
     def step_migration(self) -> None:
-        has_permanent_cities = any(getattr(s, "is_permanent", False) for s in self.settlements)
-        if has_permanent_cities or self.infrastructure_level >= 1.0:
+        if any(s.is_permanent for s in self.settlements) or self.infrastructure_level >= 1.0:
             return
 
-        attn = self.language.cultural_attention
-        w_dyn = attn[4]
+        w_dyn = self.language.cultural_attention[4]
         mobility = 0.012 * (w_dyn / 1.0) / (1.0 + self.language.cultural_inertia * 0.40)
 
-        def evaluate_location(eval_x: float, eval_y: float) -> float:
-            env = self.terrain.sample_environment(eval_x, eval_y)
-            if env.altitude <= 0.06: return -9999.0
-            pastoral_dist = ((env.vegetation - 0.30) / 0.18) ** 2 + ((env.humidity - 0.38) / 0.20) ** 2
-            return math.exp(-pastoral_dist) * max(0.0, 1.0 - env.altitude * 0.8)
+        def eval_loc(ex: float, ey: float) -> float:
+            env = self.terrain.sample_environment(ex, ey)
+            if env.altitude <= 0.06:
+                return -999.0
+            p_dist = ((env.vegetation - 0.30) / 0.18) ** 2 + ((env.humidity - 0.38) / 0.20) ** 2
+            return math.exp(-p_dist) * max(0.0, 1.0 - env.altitude * 0.8)
 
-        current_val = evaluate_location(self.x, self.y)
-        grad_x, grad_y = 0.0, 0.0
-        probe_dist = 0.02
-
-        for dx, dy in [(-probe_dist, 0), (probe_dist, 0), (0, -probe_dist), (0, probe_dist)]:
-            val = evaluate_location(max(0.02, min(0.98, self.x + dx)), max(0.02, min(0.98, self.y + dy)))
-            diff = val - current_val
-            if dx != 0: grad_x += diff * (1.0 if dx > 0 else -1.0)
-            if dy != 0: grad_y += diff * (1.0 if dy > 0 else -1.0)
+        cur_val = eval_loc(self.x, self.y)
+        grad_x = eval_loc(min(0.98, self.x + 0.02), self.y) - cur_val
+        grad_y = eval_loc(self.x, min(0.98, self.y + 0.02)) - cur_val
 
         self.vx = 0.80 * self.vx + 0.20 * grad_x * mobility
         self.vy = 0.80 * self.vy + 0.20 * grad_y * mobility
 
-        next_x = max(0.02, min(0.98, self.x + self.vx))
-        next_y = max(0.02, min(0.98, self.y + self.vy))
-        
-        next_env = self.terrain.sample_environment(next_x, next_y)
-        if next_env.altitude >= 0.06:
-            self.x = next_x
-            self.y = next_y
+        nx = max(0.02, min(0.98, self.x + self.vx))
+        ny = max(0.02, min(0.98, self.y + self.vy))
+
+        if self.terrain.elevation_at(nx, ny) >= 0.06:
+            self.x, self.y = nx, ny
             if self.settlements and not self.settlements[0].is_permanent:
-                self.settlements[0].x = next_x
-                self.settlements[0].y = next_y
-        else:
-            self.vx *= -0.5
-            self.vy *= -0.5
+                self.settlements[0].x, self.settlements[0].y = nx, ny
 
     @property
     def environment(self) -> Environment:
@@ -593,12 +559,8 @@ class Civilization:
         env = self.terrain.sample_environment(self.x, self.y, epoch=epoch)
         self.language.environment = env
         self.language.population = self.population
-        
-        veg = env.emergent_vegetation(
-            population=self.population, 
-            cultural_attention=self.language.cultural_attention
-        )
-        
+
+        veg = env.emergent_vegetation(population=self.population, cultural_attention=self.language.cultural_attention)
         target_profile = env.generate_profile(
             name=f"{self.name} Profile",
             initial_head_directionality=self.language.profile.head_directionality,
@@ -607,35 +569,36 @@ class Civilization:
             vegetation=veg,
             parent_bias=self.language.profile.aesthetic_bias,
         )
-        
+
         curr = self.language.profile
         alpha = 0.05
-        
-        smoothed_complexity = round((1.0 - alpha) * curr.syllable_complexity + alpha * target_profile.syllable_complexity, 3)
         aridity = max(0.0, 1.0 - env.humidity)
 
-        w_ext = self.language.cultural_attention[6]
-        w_soc = self.language.cultural_attention[5]
-        h_drift = 0.008 * (w_ext - w_soc)
-        smoothed_head_dir = max(0.10, min(0.90, curr.head_directionality + h_drift))
+        # Measured synthesis index directly reflects lexicon morphemic state
+        measured_s_idx = self.language.synthesis_index
 
-        w_pot = self.language.cultural_attention[3]
-        target_alignment = "ergative_absolutive" if w_pot > (w_soc * 1.15) else "nominative_accusative"
+        # Damped Restorative Word Order Equilibrium: prevents saturation at 0.90
+        # h oscillates around cultural attention balance with a restoring potential toward stability
+        h_force = 0.012 * (self.language.cultural_attention[6] - self.language.cultural_attention[5])
+        h_restore = -0.04 * (curr.head_directionality - 0.50)
+        smoothed_head_dir = round(max(0.15, min(0.85, curr.head_directionality + h_force + h_restore)), 3)
 
         self.language.profile = curr._replace(
             max_transition_cost=round((1.0 - alpha) * curr.max_transition_cost + alpha * target_profile.max_transition_cost, 2),
             apocope_rate=round((1.0 - alpha) * curr.apocope_rate + alpha * target_profile.apocope_rate, 3),
             syncope_rate=round((1.0 - alpha) * curr.syncope_rate + alpha * target_profile.syncope_rate, 3),
-            synthesis_index=round((1.0 - alpha) * curr.synthesis_index + alpha * target_profile.synthesis_index, 3),
-            syllable_complexity=smoothed_complexity,
-            head_directionality=round(smoothed_head_dir, 3),
-            alignment=target_alignment,
+            synthesis_index=measured_s_idx,
+            syllable_complexity=round((1.0 - alpha) * curr.syllable_complexity + alpha * target_profile.syllable_complexity, 3),
+            head_directionality=smoothed_head_dir,
+            alignment="ergative_absolutive" if self.language.cultural_attention[3] > (self.language.cultural_attention[5] * 1.15) else "nominative_accusative",
             double_stop_strategy="spirantization" if (env.altitude * 0.6 + aridity * 0.4) > 0.45 else "gemination",
             acoustic_roughness=round((1.0 - alpha) * curr.acoustic_roughness + alpha * target_profile.acoustic_roughness, 3),
             d_min_vowel=round((1.0 - alpha) * curr.d_min_vowel + alpha * target_profile.d_min_vowel, 3),
             d_min_consonant=round((1.0 - alpha) * curr.d_min_consonant + alpha * target_profile.d_min_consonant, 3),
         )
-        self._calculate_food_and_territory(env, veg)
+
+        base_radius = 0.05 + 0.07 * math.sqrt(max(0.01, self.population)) * (self.language.cultural_attention[6] / 1.0)
+        self.territory_radius = round(base_radius * (1.0 + 0.50 * self.food_deficit) * max(0.40, 1.0 - env.altitude * 0.50), 3)
 
 
 class ContinuousWorldMap:
@@ -649,29 +612,11 @@ class ContinuousWorldMap:
         self.road_network: list[RoadEdge] = []
         self.active_truces: dict[tuple[str, str], int] = {}
         self.current_epoch: int = 0
-        self._friction_cache: dict[tuple[float, float, float, float], float] = {}
         self.active_trade_routes: list[tuple[str, str]] = []
         self.active_conflicts: list[tuple[str, str]] = []
         self.event_log: list[str] = []
         self.territory_grid: dict[tuple[int, int], str] = {}
         self.density_grid: dict[tuple[int, int], float] = {}
-        self._precompute_static_terrain_env()
-
-    def _precompute_static_terrain_env(self, resolution: int = 50):
-        self._env_cache: list[list[dict]] = []
-        for r in range(resolution):
-            row = []
-            gy = r / float(resolution - 1)
-            for c in range(resolution):
-                gx = c / float(resolution - 1)
-                env = self.terrain.sample_environment(gx, gy, epoch=0)
-                row.append({
-                    "alt": env.altitude,
-                    "hum": env.humidity,
-                    "temp": env.temperature,
-                    "climax_veg": env.emergent_vegetation(population=0.0)
-                })
-            self._env_cache.append(row)
 
     def spawn_civilization(
         self,
@@ -713,604 +658,291 @@ class ContinuousWorldMap:
         self.current_epoch += 1
         self.active_trade_routes.clear()
         self.active_conflicts.clear()
-        civ_list = list(self.civilizations.values())
-        res = len(self._env_cache)
+        res = 50
 
-        # 1. Demographics, Extinction & True Abandonment (No more fake desertions!)
-        dead_civs = []
-        for civ in civ_list:
+        dead_civ_names = []
+        for civ in list(self.civilizations.values()):
             if civ.population <= 0.005 or not civ.settlements:
-                dead_civs.append(civ.name)
+                dead_civ_names.append(civ.name)
                 continue
+
             civ.sync_environment(epoch=self.current_epoch)
             civ.step_demographics()
             civ.step_migration()
 
-            retained_settlements = []
+            surviving_settlements = []
             for s in civ.settlements:
-                # A city ONLY deserts if it has literally zero inhabitants (< 100 people)!
                 if s.local_pop <= 0.001:
-                    s.history.append(f"Epoch {self.current_epoch}: Deserted due to zero population; sovereignty lost from {civ.name}.")
-                    self.event_log.append(f"Desertion: '{s.name}' was abandoned! Sovereignty lost.")
-                    s._deserted_epoch = self.current_epoch
+                    s.history.append(f"Epoch {self.current_epoch}: Abandoned.")
+                    self.event_log.append(f"Desertion: '{s.name}' was abandoned.")
+                    setattr(s, "_deserted_epoch", self.current_epoch)
                     self.abandoned_ruins.append(s)
                 else:
-                    retained_settlements.append(s)
-            civ.settlements = retained_settlements
+                    surviving_settlements.append(s)
+            civ.settlements = surviving_settlements
 
-        # When a civilization goes extinct, its cities STAY ON THE MAP AS ANCIENT RUINS!
-        for dname in dead_civs:
-            dead_civ = self.civilizations.get(dname)
+        for dname in dead_civ_names:
+            dead_civ = self.civilizations.pop(dname, None)
             if dead_civ:
                 for s in dead_civ.settlements:
-                    s.history.append(f"Epoch {self.current_epoch}: Realm {dname} collapsed; city left as ancient ruins.")
-                    s._deserted_epoch = self.current_epoch
+                    setattr(s, "_deserted_epoch", self.current_epoch)
                     self.abandoned_ruins.append(s)
-                del self.civilizations[dname]
-                self.event_log.append(f"Epoch {self.current_epoch}: Civilization '{dname}' collapsed; its monuments remain as ruins.")
+                self.event_log.append(f"Epoch {self.current_epoch}: Civilization '{dname}' collapsed.")
+
         civ_list = [c for c in self.civilizations.values() if c.population > 0.005 and c.settlements]
 
-        # 1B. Road Entropy Decay & Orphaned Road Pruning
-        living_city_names = {s.name for civ in civ_list for s in civ.settlements}
-        retained_roads = []
-        for edge in self.road_network:
-            a_alive = (edge.city_a in living_city_names)
-            b_alive = (edge.city_b in living_city_names)
-
-            if not a_alive and not b_alive:
-                continue
-            elif not a_alive or not b_alive:
-                edge.level = round(edge.level - 0.12, 3)
-            else:
-                edge.level = round(edge.level - 0.035, 3)
-
-            if edge.level >= 0.10:
-                retained_roads.append(edge)
-        self.road_network = retained_roads
-
-        # =====================================================================
-        # 2. LOGARITHMIC POWER FIELD (Guaranteed Seeding for every civ!)
-        # =====================================================================
         grid_claims: dict[tuple[int, int], str] = {}
         grid_density: dict[tuple[int, int], float] = {}
-        civ_claimed_cells_data: dict[str, list[dict]] = {c.name: [] for c in civ_list}
+        civ_claimed_cells: dict[str, list[dict]] = {c.name: [] for c in civ_list}
 
-        active_city_list: list[tuple[SettlementNode, Civilization]] = []
-        for civ in civ_list:
-            if not civ.settlements: continue
-            primary_s = max(civ.settlements, key=lambda s: s.local_pop)
-            active_city_list.append((primary_s, civ))
-            for s in civ.settlements:
-                if s != primary_s and s.local_pop >= 0.015:
-                    active_city_list.append((s, civ))
+        active_cities: list[tuple[SettlementNode, Civilization]] = [
+            (s, c) for c in civ_list for s in c.settlements if s.local_pop >= 0.015 or s.is_capital
+        ]
 
-        if active_city_list:
-            city_x = np.array([item[0].x for item in active_city_list], dtype=np.float32)
-            city_y = np.array([item[0].y for item in active_city_list], dtype=np.float32)
-            
-            city_power = np.array([
+        if active_cities:
+            city_coords = np.array([[item[0].x, item[0].y] for item in active_cities], dtype=np.float32)
+            city_powers = np.array([
                 1.0 + 0.35 * math.log(1.0 + item[0].local_pop * 10.0) * (item[1].language.cultural_attention[6] / 1.0)
-                for item in active_city_list
+                for item in active_cities
             ], dtype=np.float32)
 
-            y_coords = np.linspace(0.0, 1.0, res, dtype=np.float32)
-            x_coords = np.linspace(0.0, 1.0, res, dtype=np.float32)
-            grid_y, grid_x = np.meshgrid(y_coords, x_coords, indexing='ij')
+            y_grid, x_grid = np.meshgrid(
+                np.linspace(0.0, 1.0, res, dtype=np.float32),
+                np.linspace(0.0, 1.0, res, dtype=np.float32),
+                indexing='ij'
+            )
 
-            friction_arr = np.zeros((res, res), dtype=np.float32)
+            elev_grid = np.array([
+                [self.terrain.elevation_at(x_grid[r, c], y_grid[r, c], epoch=self.current_epoch) for c in range(res)]
+                for r in range(res)
+            ], dtype=np.float32)
+
+            water_mask = elev_grid <= 0.0
+            friction = np.where(
+                water_mask,
+                3.5 + np.clip(-elev_grid * 30.0, 0.0, 12.0),
+                1.0 + 5.5 * (np.maximum(0.0, elev_grid - 0.25) ** 2)
+            )
+
+            dx = x_grid[None, :, :] - city_coords[:, 0, None, None]
+            dy = y_grid[None, :, :] - city_coords[:, 1, None, None]
+            dists = np.sqrt(dx * dx + dy * dy)
+
+            costs = (dists * friction[None, :, :]) / city_powers[:, None, None]
+            min_dist = np.min(dists, axis=0)
+            winner_idx = np.argmin(costs, axis=0)
+
+            home_mask = min_dist <= 0.06
+            closest_idx = np.argmin(dists, axis=0)
+            winner_idx = np.where(home_mask, closest_idx, winner_idx)
+
+            city_pops = np.array([item[0].local_pop for item in active_cities], dtype=np.float32)
+            urban_density_all = np.sum(city_pops[:, None, None] * np.exp(-dists * 55.0), axis=0)
+
             for r in range(res):
                 for c in range(res):
-                    alt = self._env_cache[r][c]["alt"]
-                    if alt <= 0.0:
-                        friction_arr[r, c] = 3.5 + min(12.0, abs(alt) * 30.0)
-                    else:
-                        friction_arr[r, c] = 1.0 + 5.5 * (max(0.0, alt - 0.25) ** 2)
-
-            dx = grid_x[None, :, :] - city_x[:, None, None]
-            dy = grid_y[None, :, :] - city_y[:, None, None]
-            dist = np.sqrt(dx*dx + dy*dy)
-
-            trench_mask = ((grid_x[None, :, :] >= 0.80) & (city_x[:, None, None] < 0.75)) | \
-                          ((grid_x[None, :, :] < 0.75) & (city_x[:, None, None] >= 0.80))
-            effective_friction = np.where(trench_mask, 999.0, friction_arr[None, :, :])
-
-            weighted_cost = (dist * effective_friction) / (city_power[:, None, None])
-
-            min_dist_to_any = np.min(dist, axis=0)
-            closest_city_idx = np.argmin(dist, axis=0)
-            winning_indices = np.argmin(weighted_cost, axis=0)
-
-            # Inalienable home basin: d <= 0.06 is strictly owned by the local city
-            in_home_basin = (min_dist_to_any <= 0.06)
-            winning_indices = np.where(in_home_basin, closest_city_idx, winning_indices)
-
-            max_reach = 0.24
-
-            for r in range(res):
-                for c in range(res):
-                    if min_dist_to_any[r, c] > max_reach:
+                    if min_dist[r, c] > 0.24:
                         continue
-
-                    best_k = winning_indices[r, c]
-                    winning_node, winning_civ = active_city_list[best_k]
+                    winning_node, winning_civ = active_cities[winner_idx[r, c]]
                     cname = winning_civ.name
-
                     grid_claims[(r, c)] = cname
-                    gx, gy = c / float(res - 1), r / float(res - 1)
-                    cell_env = self.terrain.sample_environment(gx, gy, epoch=self.current_epoch)
-                    dist_coast = min(gx, abs(gx - 0.78), 1.0 - gx)
 
-                    civ_claimed_cells_data[cname].append({
+                    gx, gy = float(x_grid[r, c]), float(y_grid[r, c])
+                    cell_env = self.terrain.sample_environment(gx, gy, epoch=self.current_epoch)
+                    dist_c = min(gx, abs(gx - 0.76), 1.0 - gx)
+
+                    civ_claimed_cells[cname].append({
                         "gx": gx, "gy": gy,
                         "alt": cell_env.altitude, "hum": cell_env.humidity,
                         "temp": cell_env.temperature, "veg": cell_env.vegetation,
-                        "dist_coast": dist_coast,
+                        "dist_coast": dist_c,
                     })
 
-        for (r, c), cname in grid_claims.items():
-            civ_obj = self.civilizations.get(cname)
-            if not civ_obj:
-                continue
-            gx, gy = c / float(res - 1), r / float(res - 1)
-            
-            total_urban_density = sum(
-                s.local_pop * math.exp(-math.sqrt((gx - s.x)**2 + (gy - s.y)**2) * 55.0)
-                for s in civ_obj.settlements
-            )
-            rural_baseline = min(0.025, civ_obj.population * 0.006)
-            combined_density = min(1.0, total_urban_density + rural_baseline)
-            grid_density[(r, c)] = round(combined_density, 3)
+                    dens = float(urban_density_all[r, c]) + min(0.025, winning_civ.population * 0.006)
+                    grid_density[(r, c)] = round(min(1.0, dens), 3)
 
         self.territory_grid = grid_claims
         self.density_grid = grid_density
 
         for civ in civ_list:
-            civ.update_economic_production(civ_claimed_cells_data.get(civ.name, []), world_map=self)
+            civ.update_economic_production(civ_claimed_cells.get(civ.name, []), world_map=self)
 
-        # 3. Reoccupation of Abandoned Ruins (With 3-epoch cooldown!)
-        if self.abandoned_ruins:
-            retained_ruins = []
-            for ruin in self.abandoned_ruins:
-                # Cooldown prevents same-tick desertion-reclaim ping-pong
-                if (self.current_epoch - getattr(ruin, "_deserted_epoch", 0)) < 3:
-                    retained_ruins.append(ruin)
-                    continue
-
-                r_c = max(0, min(res - 1, int(round(ruin.x * (res - 1)))))
-                r_r = max(0, min(res - 1, int(round(ruin.y * (res - 1)))))
-                owner_name = grid_claims.get((r_r, r_c))
-                reoccupied = False
-
-                if owner_name:
-                    new_owner = self.civilizations.get(owner_name)
-                    if new_owner and new_owner.population >= 0.25:
-                        ruin.name = f"{ruin.name.split()[0]} ({new_owner.name} Reclaimed)"
-                        ruin.local_pop = 0.03
-                        ruin.fortification_level = 1.0
-                        ruin.history.append(f"Epoch {self.current_epoch}: Reoccupied and restored by {new_owner.name}.")
-                        new_owner.settlements.append(ruin)
-                        self.event_log.append(f"Restoration: '{new_owner.name}' reoccupied the ancient ruins of '{ruin.name}'!")
-                        reoccupied = True
-
-                if not reoccupied:
-                    ruin_age = getattr(ruin, "_ruin_decay_age", 0) + 1
-                    ruin._ruin_decay_age = ruin_age
-                    if ruin_age < 30:
-                        retained_ruins.append(ruin)
-                    else:
-                        self.event_log.append(f"Oblivion: The ancient stone ruins of '{ruin.name}' crumbled into the landscape forever.")
-            self.abandoned_ruins = retained_ruins
-
-        # 4. City-to-City Trade & Conflict
-        for civ in civ_list:
-            if len(civ.settlements) > 1 and civ.infrastructure_level >= 1.0:
-                for idx, s in enumerate(civ.settlements[1:], start=1):
-                    sister_city = min(
-                        civ.settlements[:idx],
-                        key=lambda o: math.hypot(o.x - s.x, o.y - s.y)
-                    )
-                    self._ensure_road_edge(s, sister_city, is_naval=False, traffic_boost=0.15)
-
-        # 4A. BORDER NEIGHBORS (Dry land only!)
         border_neighbors: dict[str, set[str]] = {c.name: set() for c in civ_list}
         for (r, c), owner in grid_claims.items():
-            if self._env_cache[r][c]["alt"] <= 0.0:
-                continue
             for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                 nr, nc = r + dr, c + dc
-                if 0 <= nr < res and 0 <= nc < res and (nr, nc) in grid_claims:
-                    if self._env_cache[nr][nc]["alt"] > 0.0:
-                        adj_owner = grid_claims[(nr, nc)]
-                        if adj_owner != owner:
-                            border_neighbors[owner].add(adj_owner)
+                if (nr, nc) in grid_claims:
+                    adj = grid_claims[(nr, nc)]
+                    if adj != owner:
+                        border_neighbors[owner].add(adj)
 
-        # 4B. CLEAN LINEAGE CHECK: Sister colonies are NEVER foreign threats!
-        for civ in civ_list:
-            foreign_threats = []
-            for other_name in border_neighbors.get(civ.name, set()):
-                other_civ = self.civilizations.get(other_name)
-                if other_civ and other_civ.lineage != civ.lineage:
-                    foreign_threats.append(other_name)
-
-            if len(foreign_threats) >= 2:
-                w = civ.language.cultural_attention
-                w[3] = min(2.20, round(w[3] + 0.025 * len(foreign_threats), 3))
-                w[2] = max(0.30, round(w[2] - 0.020, 3))
-                w[5] = min(2.20, round(w[5] + 0.015, 3))
-                tot = sum(w) or 7.0
-                civ.language.cultural_attention = [round(7.0 * (v / tot), 3) for v in w]
-
-        total_world_pop = sum(c.population for c in civ_list) or 1.0
-
-        # 4C. BILATERAL TRADE & CONFLICT
-        n = len(civ_list)
-        for i in range(n):
-            for j in range(i + 1, n):
-                civ_a, civ_b = civ_list[i], civ_list[j]
-                if civ_a.population <= 0.005 or civ_b.population <= 0.005: continue
-                if not civ_a.settlements or not civ_b.settlements: continue
-
-                closest_pair = min(
-                    ((s_a, s_b) for s_a in civ_a.settlements for s_b in civ_b.settlements),
-                    key=lambda pair: math.sqrt((pair[0].x - pair[1].x)**2 + (pair[0].y - pair[1].y)**2)
-                )
-                city_a, city_b = closest_pair
-                dist_cities = math.sqrt((city_a.x - city_b.x)**2 + (city_a.y - city_b.y)**2)
-
-                shares_border = (civ_b.name in border_neighbors.get(civ_a.name, set()))
-                has_direct_route = any(
-                    (e.city_a in [s.name for s in civ_a.settlements] and e.city_b in [s.name for s in civ_b.settlements]) or
-                    (e.city_b in [s.name for s in civ_a.settlements] and e.city_a in [s.name for s in civ_b.settlements])
-                    for e in self.road_network
-                )
-
-                if not shares_border and not has_direct_route and dist_cities > 0.14:
+        n_civs = len(civ_list)
+        for i in range(n_civs):
+            for j in range(i + 1, n_civs):
+                ca, cb = civ_list[i], civ_list[j]
+                if not ca.settlements or not cb.settlements:
                     continue
 
-                truce_key = tuple(sorted([civ_a.name, civ_b.name]))
-                has_active_truce = (self.active_truces.get(truce_key, 0) > self.current_epoch)
+                closest_pair = min(
+                    ((sa, sb) for sa in ca.settlements for sb in cb.settlements),
+                    key=lambda p: math.hypot(p[0].x - p[1].x, p[0].y - p[1].y)
+                )
+                city_a, city_b = closest_pair
+                dist_ab = math.hypot(city_a.x - city_b.x, city_a.y - city_b.y)
 
-                is_kin = (civ_a.lineage == civ_b.lineage)
-                pot_a = civ_a.language.cultural_attention[3] * civ_a.population
-                pot_b = civ_b.language.cultural_attention[3] * civ_b.population
-                power_ratio = pot_a / max(0.01, pot_b)
+                shares_border = (cb.name in border_neighbors.get(ca.name, set()))
+                if not shares_border and dist_ab > 0.16:
+                    continue
 
-                attacker = civ_a if power_ratio >= 1.0 else civ_b
-                defender = civ_b if attacker is civ_a else civ_a
+                truce_key = tuple(sorted([ca.name, cb.name]))
+                has_truce = (self.active_truces.get(truce_key, 0) > self.current_epoch)
 
-                w_soc_att = attacker.language.cultural_attention[5]
-                w_pot_att = attacker.language.cultural_attention[3]
-                w_dyn_att = attacker.language.cultural_attention[4]
-                w_val_att = attacker.language.cultural_attention[2]
+                pot_a = ca.language.cultural_attention[3] * ca.population
+                pot_b = cb.language.cultural_attention[3] * cb.population
+                p_ratio = pot_a / max(0.01, pot_b)
 
-                cultural_belligerence = (w_pot_att * 1.30 + w_dyn_att * 0.85) / max(0.5, (w_soc_att * 0.90 + w_val_att * 0.70))
-                kinship_bonus = 0.65 if is_kin else 0.0
-                war_threshold = round(max(1.15, 1.45 + kinship_bonus - 0.20 * (cultural_belligerence - 1.0)), 2)
+                attacker, defender = (ca, cb) if p_ratio >= 1.0 else (cb, ca)
+                is_kin = (ca.lineage == cb.lineage)
+                war_thresh = 1.45 + (0.65 if is_kin else 0.0)
 
-                defender_age = self.current_epoch - defender.founded_epoch
-                is_predatory = (cultural_belligerence >= 1.35 and power_ratio > war_threshold and not is_kin)
-
-                # War is blocked by armistice, directing energy into peaceful trade!
-                has_conflict = not has_active_truce and (power_ratio > war_threshold or power_ratio < (1.0 / war_threshold)) and (
-                    civ_a.food_deficit > 0.010 or civ_b.food_deficit > 0.010 or (is_predatory and defender_age >= 20)
+                has_conflict = not has_truce and (p_ratio > war_thresh or p_ratio < (1.0 / war_thresh)) and (
+                    ca.food_deficit > 0.01 or cb.food_deficit > 0.01
                 )
 
-                if has_conflict:
-                    self.active_conflicts.append((civ_a.name, civ_b.name))
-                    victor = attacker
-                    conquered = defender
-                    if not conquered.settlements or not victor.settlements:
-                        continue
+                if has_conflict and attacker.settlements and defender.settlements:
+                    self.active_conflicts.append((ca.name, cb.name))
+                    target = min(defender.settlements, key=lambda s: math.hypot(s.x - attacker.x, s.y - attacker.y))
+                    dist_camp = math.hypot(target.x - attacker.x, target.y - attacker.y)
 
-                    # 1. SIEGE LOGISTICS & SIEGECRAFT
-                    target_town = min(conquered.settlements, key=lambda s: math.sqrt((s.x - victor.x)**2 + (s.y - victor.y)**2))
-                    dist_campaign = math.sqrt((target_town.x - victor.x)**2 + (target_town.y - victor.y)**2)
-                    
-                    mid_x = (victor.x + target_town.x) * 0.5
-                    mid_y = (victor.y + target_town.y) * 0.5
-                    is_amphibious = (self.terrain.sample_environment(mid_x, mid_y).altitude <= 0.0) or (target_town.x >= 0.80 and victor.x < 0.75)
+                    logistics = math.exp(-dist_camp / 0.35)
+                    assault = (attacker.population * 0.12) * attacker.language.cultural_attention[3] * logistics * 1.4
+                    defense = target.local_pop * defender.language.cultural_attention[3] * max(0.20, target.fortification_level) * (1.8 if len(defender.settlements) == 1 else 1.4)
 
-                    if is_amphibious and victor.economy.marine < 15.0:
-                        continue
-
-                    logistics_efficiency = math.exp(-dist_campaign / 0.35)
-                    if is_amphibious:
-                        naval_transport = min(1.0, victor.economy.marine / 40.0)
-                        logistics_efficiency *= (0.20 * naval_transport)
-
-                    # High infrastructure brings siege engines (catapults, rams)
-                    siege_engineering = 1.0 + 0.18 * math.log(1.0 + victor.infrastructure_level)
-                    mobilization_rate = 0.10 + 0.04 * (victor.language.cultural_attention[3] / 1.0)
-                    assault_power = (victor.population * mobilization_rate) * victor.language.cultural_attention[3] * 1.40 * siege_engineering * logistics_efficiency
-
-                    island_defense_multiplier = 2.2 if is_amphibious else 1.0
-                    is_last_city = (len(conquered.settlements) == 1)
-                    capital_mult = 1.8 if is_last_city else 1.4
-                    
-                    base_defense = target_town.local_pop * conquered.language.cultural_attention[3] * max(0.20, target_town.fortification_level) * capital_mult * island_defense_multiplier
-
-                    coalition_bonus = 0.0
-                    if (victor.population / total_world_pop) >= 0.35:
-                        coalition_allies = [c for c in civ_list if c != victor and c != conquered and c.population >= 0.20]
-                        raw_coalition = sum(c.population * 0.12 * c.language.cultural_attention[3] for c in coalition_allies)
-                        coalition_bonus = min(base_defense * 1.5, raw_coalition)
-
-                    city_defense = base_defense + coalition_bonus
-
-                    # Direct breach or surrender when defenses crumble (<= 0.20)
-                    if assault_power >= city_defense or target_town.fortification_level <= 0.20:
-                        conquered.settlements.remove(target_town)
-                        
-                        nearest_victor_city = min(
-                            victor.settlements,
-                            key=lambda s: math.hypot(s.x - target_town.x, s.y - target_town.y)
-                        )
-                        self._ensure_road_edge(nearest_victor_city, target_town, is_naval=is_amphibious, traffic_boost=0.50)
-
-                        if is_last_city:
-                            target_town.name = f"{conquered.name} ({victor.name} Annex)"
-                            target_town.fortification_level = max(0.8, target_town.fortification_level * 0.65)
-                            target_town.local_pop = round(target_town.local_pop * 0.75, 3)
-                            target_town.history.append(f"Epoch {self.current_epoch}: Capital fallen to {victor.name}; realm annexed.")
-
-                            alpha = min(0.48, max(0.06, conquered.population / max(0.01, victor.population + conquered.population)))
-                            w_vic, w_conq = victor.language.cultural_attention, conquered.language.cultural_attention
-                            blended_w = [(1.0 - alpha) * w_vic[k] + alpha * w_conq[k] for k in range(7)]
-                            tot = sum(blended_w) or 7.0
-                            victor.language.cultural_attention = [round(7.0 * (val / tot), 3) for val in blended_w]
-
-                            pv, pc = victor.language.profile, conquered.language.profile
-                            victor.language.profile = pv._replace(
-                                head_directionality=round((1.0 - alpha) * pv.head_directionality + alpha * pc.head_directionality, 3),
-                                synthesis_index=round((1.0 - alpha) * pv.synthesis_index + alpha * pc.synthesis_index, 3),
-                                syllable_complexity=round((1.0 - alpha) * pv.syllable_complexity + alpha * pc.syllable_complexity, 3),
-                            )
-
-                            core_vocab = sorted([w for w in conquered.language.words.values() if w.category == LexicalCategory.CONTENT_OPEN], key=lambda w: w.usage_frequency, reverse=True)
-                            for loan in core_vocab[:int(round(8 + 35 * alpha))]:
-                                victor.language.borrow_word(loan, source_language_name=conquered.name, current_generation=self.current_epoch)
-
-                            victor.language.rebuild_inventory()
-                            victor.language._cached_grammar_paradigm = None
-                            self.dormant_classical_languages[conquered.name] = conquered.language
-
-                            conquered.population = 0.0
-                            self.event_log.append(f"HISTORIC ANNEXATION: '{victor.name}' conquered '{conquered.name}' (Substrate: {alpha*100:.1f}%)!")
-                        else:
-                            target_town.name = f"{target_town.name.split()[0]} ({victor.name} Province)"
-                            target_town.fortification_level = max(0.6, target_town.fortification_level * 0.50)
-                            target_town.local_pop = round(target_town.local_pop * 0.70, 3)
-                            target_town.history.append(f"Epoch {self.current_epoch}: Sacked and annexed by {victor.name}.")
-                            self.event_log.append(f"Conquest: '{victor.name}' breached and captured '{target_town.name}'!")
-
-                        victor.settlements.append(target_town)
-                        victor.infrastructure_level = min(25.0, victor.infrastructure_level + 0.50)
-                        
-                        # Armistice follows decisive capture
+                    if assault >= defense or target.fortification_level <= 0.20:
+                        defender.settlements.remove(target)
+                        attacker.settlements.append(target)
+                        target.name = f"{target.name.split()[0]} ({attacker.name})"
+                        target.fortification_level = max(0.6, target.fortification_level * 0.60)
+                        target.history.append(f"Epoch {self.current_epoch}: Captured by {attacker.name}.")
                         self.active_truces[truce_key] = self.current_epoch + 25
-                    else:
-                        # Structural wall damage
-                        damage = round(min(target_town.fortification_level, 0.40 + 0.05 * victor.language.cultural_attention[3]), 2)
-                        target_town.fortification_level = round(max(0.0, target_town.fortification_level - damage), 2)
-                        # Cannot drop below 1,000 citizens from siege attrition
-                        target_town.local_pop = round(max(0.010, target_town.local_pop * 0.90), 3)
 
-                        if target_town.fortification_level == 0.0:
-                            self.event_log.append(f"WALLS BREACHED: Garrison at '{target_town.name}' held, but stone walls crumbled into rubble!")
+                        if not defender.settlements:
+                            defender.population = 0.0
+                            self.dormant_classical_languages[defender.name] = defender.language
+                            self.event_log.append(f"HISTORIC CONQUEST: '{attacker.name}' annexed '{defender.name}'.")
                         else:
-                            self.event_log.append(f"Siege: Walls of '{target_town.name}' battered down to Level {target_town.fortification_level}!")
+                            self.event_log.append(f"Siege: '{attacker.name}' breached and captured '{target.name}'.")
+                    else:
+                        target.fortification_level = round(max(0.0, target.fortification_level - 0.35), 2)
+                        target.local_pop = round(max(0.01, target.local_pop * 0.92), 3)
 
-                    for p in (victor, conquered):
-                        if p.population > 0.005:
-                            w = p.language.cultural_attention
-                            w[3] = round(max(0.40, min(2.20, w[3] * 0.98)), 3)
-                            w[2] = round(min(2.00, max(0.30, w[2] + 0.015)), 3)
-                            tot = sum(w) or 7.0
-                            p.language.cultural_attention = [round(7.0 * (v / tot), 3) for v in w]
+                elif not has_conflict:
+                    self.active_trade_routes.append((ca.name, cb.name))
+                    mid_z = self.terrain.elevation_at((city_a.x + city_b.x) * 0.5, (city_a.y + city_b.y) * 0.5)
+                    self._ensure_road_edge(city_a, city_b, is_naval=(mid_z <= 0.0), traffic_boost=0.20)
+                    intensity = 1.0 / (1.0 + math.exp(-4.0 * (0.25 - dist_ab) * 6.0))
+                    ca.language.set_contact(cb.language, intensity)
 
-                else:
-                    # =============================================================
-                    # PEACEFUL COMMERCE (Truce or Peace channels Trade!)
-                    # =============================================================
-                    self.active_trade_routes.append((civ_a.name, civ_b.name))
-                    mid_x, mid_y = (city_a.x + city_b.x) * 0.5, (city_a.y + city_b.y) * 0.5
-                    is_crossing_water = self.terrain.sample_environment(mid_x, mid_y).altitude <= 0.0
-                    self._ensure_road_edge(city_a, city_b, is_naval=is_crossing_water, traffic_boost=0.20)
+                    if random.random() < (intensity * 0.20):
+                        pool = [w for w in cb.language.words.values() if w.category == LexicalCategory.CONTENT_OPEN]
+                        if pool:
+                            ca.language.borrow_word(random.choice(pool), source_language_name=cb.name, current_generation=self.current_epoch)
 
-                    intensity = 1.0 / (1.0 + math.exp(-4.0 * (0.25 - dist_cities) * 6.0))
-                    civ_a.language.set_contact(civ_b.language, intensity)
-
-                    infra_diff = civ_a.infrastructure_level - civ_b.infrastructure_level
-                    if abs(infra_diff) > 0.5:
-                        transfer = intensity * 0.04 * abs(infra_diff)
-                        if infra_diff > 0: civ_b.infrastructure_level = min(25.0, round(civ_b.infrastructure_level + transfer, 2))
-                        else: civ_a.infrastructure_level = min(25.0, round(civ_a.infrastructure_level + transfer, 2))
-
-                    for partner in (civ_a, civ_b):
-                        w = partner.language.cultural_attention
-                        w[4] = min(2.20, round(w[4] + 0.015, 3))
-                        w[5] = min(2.20, round(w[5] + 0.015, 3))
-                        w[2] = min(2.00, round(w[2] + 0.010, 3))
-                        tot = sum(w) or 7.0
-                        partner.language.cultural_attention = [round(7.0 * (v / tot), 3) for v in w]
-
-                    if random.random() < (intensity * 0.25):
-                        cand_pool = [w for w in civ_b.language.words.values() if w.category == LexicalCategory.CONTENT_OPEN]
-                        if cand_pool:
-                            target_w = random.choice(cand_pool)
-                            p_calque = 1.0 / (1.0 + math.exp(-6.0 * (civ_a.language.cultural_inertia - 1.05)))
-                            if random.random() < p_calque:
-                                civ_a.language.calque_word(target_w, source_language_name=civ_b.name, current_generation=self.current_epoch)
-                            else:
-                                civ_a.language.borrow_word(target_w, source_language_name=civ_b.name, current_generation=self.current_epoch)
-
-        # 5. Dormant Classical Liturgical Revival
-        if self.dormant_classical_languages and random.random() < 0.15:
-            scholar_civ = random.choice(civ_list)
-            for dead_name, dead_lang in self.dormant_classical_languages.items():
-                if dead_name.split("-")[0] in scholar_civ.lineage or random.random() < 0.08:
-                    sacred_cands = [w for w in dead_lang.words.values() if w.vector.valence >= 0.70 or w.vector.potency >= 0.75]
-                    if sacred_cands:
-                        relic = random.choice(sacred_cands)
-                        scholar_civ.language.borrow_word(relic, source_language_name=f"Classical {dead_name}", current_generation=self.current_epoch)
-                        self.event_log.append(f"Scholarship: '{scholar_civ.name}' revived archaic root from extinct '{dead_name}'!")
-                        break
-
-        # =====================================================================
-        # 6. PIONEER CONVOYS: OUTWARD TO UNCLAIMED NEUTRAL WILDERNESS
-        # =====================================================================
-        remaining_expeditions = []
+        remaining_exp = []
         for exp in self.active_expeditions:
             exp["progress"] += exp["speed"]
             if exp["progress"] >= 1.0:
                 tx, ty = exp["target"]
                 col_pop = exp["pop"]
                 d_name = exp["name"]
-                parent_lineage = exp["lineage"]
                 parent_civ = self.civilizations.get(exp["civ"])
 
-                # If overseas or remote (dist >= 0.25): FORKS a new civilization!
-                # If close to home: adds a DOMESTIC CITY to the parent empire!
-                is_remote_speciation = exp.get("is_naval", False) or exp.get("dist", 0.0) >= 0.25
-
-                if is_remote_speciation or parent_civ is None:
+                if exp.get("is_naval", False) or exp.get("dist", 0.0) >= 0.25 or parent_civ is None:
                     d_lang = exp["lang"]
                     self.spawn_civilization(
-                        name=d_name, language=d_lang,
-                        x=tx, y=ty,
-                        population=col_pop, lineage=parent_lineage,
+                        name=d_name, language=d_lang, x=tx, y=ty,
+                        population=col_pop, lineage=exp["lineage"],
                         founded_epoch=self.current_epoch
                     )
-                    self.event_log.append(
-                        f"Colony Established: {exp['civ']} pioneers founded new realm '{d_name}' with {int(col_pop*100000):,} citizens!"
-                    )
+                    self.event_log.append(f"Speciation: {exp['civ']} pioneers founded new realm '{d_name}'.")
                 else:
-                    # Stays as an allied provincial city of the mother empire!
                     new_town = SettlementNode(
-                        name=f"{parent_civ.name} Frontier City",
+                        name=f"{parent_civ.name} Outpost",
                         x=tx, y=ty, local_pop=col_pop,
                         fortification_level=1.0, local_infrastructure=1.0,
                         is_capital=False, is_permanent=True,
                         founder=parent_civ.name, founded_epoch=self.current_epoch,
-                        history=[f"Founded at Epoch {self.current_epoch} by pioneer expedition from {exp['civ']}."]
+                        history=[f"Founded by {exp['civ']} pioneers."]
                     )
                     parent_civ.settlements.append(new_town)
                     parent_civ.population = round(sum(s.local_pop for s in parent_civ.settlements), 3)
-                    self.event_log.append(
-                        f"Colony Established: {exp['civ']} pioneers expanded the realm, founding '{new_town.name}'!"
-                    )
             else:
-                remaining_expeditions.append(exp)
-        self.active_expeditions = remaining_expeditions
+                remaining_exp.append(exp)
+        self.active_expeditions = remaining_exp
 
-        if (len(self.civilizations) + len(self.active_expeditions)) < 40 and (self.current_epoch % 12 == 0):
+        if (len(self.civilizations) + len(self.active_expeditions)) < 35 and (self.current_epoch % 10 == 0):
             for civ in civ_list:
-                if civ.population <= 0.005 or not civ.settlements: continue
-                attn = civ.language.cultural_attention
-                w_dyn = attn[4]
-                w_ext = attn[6]
-                saturation = civ.population / max(0.20, civ.food_capacity)
+                if civ.population < 0.35 or (civ.population / max(0.20, civ.food_capacity)) < 0.40:
+                    continue
 
-                if saturation >= 0.35 and random.random() < (0.40 * (w_dyn / 1.0) * (w_ext / 1.0)):
-                    viable_cities = [s for s in civ.settlements if s.local_pop >= 0.04]
-                    if not viable_cities: continue
-                    departure_city = max(viable_cities, key=lambda s: s.local_pop)
+                sponsor = max(civ.settlements, key=lambda s: s.local_pop)
+                if sponsor.local_pop < 0.05:
+                    continue
 
-                    # PIONEERS SEEK UNCLAIMED FRONTIER OR REMOTE COASTS/ISLANDS
-                    pioneer_candidates = []
-                    for r_i in range(res):
-                        for c_i in range(res):
-                            cell_owner = grid_claims.get((r_i, c_i))
-                            # Never settle inside another rival foreign empire
-                            if cell_owner is not None and cell_owner != civ.name:
-                                continue
+                unclaimed_r, unclaimed_c = np.where(
+                    np.array([[grid_claims.get((r, c)) is None for c in range(res)] for r in range(res)])
+                )
+                if len(unclaimed_r) == 0:
+                    continue
 
-                            cand_x = c_i / float(res - 1)
-                            cand_y = r_i / float(res - 1)
-                            c_env = self.terrain.sample_environment(cand_x, cand_y, epoch=self.current_epoch)
+                coords_unclaimed = np.column_stack((unclaimed_c / (res - 1.0), unclaimed_r / (res - 1.0)))
+                dists_to_sponsor = np.hypot(coords_unclaimed[:, 0] - sponsor.x, coords_unclaimed[:, 1] - sponsor.y)
+                valid_indices = np.where((dists_to_sponsor >= 0.08) & (dists_to_sponsor <= 0.28))[0]
 
-                            if c_env.altitude >= 0.06:
-                                dist_to_dep = math.hypot(departure_city.x - cand_x, departure_city.y - cand_y)
-                                
-                                # Search frontier: distance between 0.08 and 0.28
-                                if 0.08 <= dist_to_dep <= 0.28:
-                                    min_dist_cities = min(
-                                        (math.hypot(s.x - cand_x, s.y - cand_y) for c in self.civilizations.values() for s in c.settlements),
-                                        default=1.0
-                                    )
-                                    # Must not crowd existing cities (>= 0.075)
-                                    if min_dist_cities >= 0.075:
-                                        agri_dist = ((c_env.humidity - 0.55) / 0.22) ** 2 + ((c_env.vegetation - 0.45) / 0.22) ** 2
-                                        fertility = math.exp(-agri_dist)
-                                        # Bonus for uncolonized / offshore land
-                                        island_bonus = 1.5 if (cand_x >= 0.80 or cell_owner is None) else 1.0
-                                        pioneer_candidates.append((fertility * island_bonus, cand_x, cand_y, c_env, dist_to_dep))
+                if len(valid_indices) > 0:
+                    candidate_scores = []
+                    for idx_val in valid_indices:
+                        cand_x = float(coords_unclaimed[idx_val, 0])
+                        cand_y = float(coords_unclaimed[idx_val, 1])
+                        c_env = self.terrain.sample_environment(cand_x, cand_y, epoch=self.current_epoch)
+                        
+                        if c_env.altitude >= 0.06:
+                            fertility = math.exp(-(((c_env.humidity - 0.55) / 0.22) ** 2 + ((c_env.vegetation - 0.45) / 0.22) ** 2))
+                            
+                            # Physical ray-march: verify if travel path crosses marine water (altitude <= 0.0)
+                            t_samples = np.linspace(0.2, 0.8, 4)
+                            path_altitudes = [
+                                self.terrain.elevation_at(sponsor.x + t * (cand_x - sponsor.x), sponsor.y + t * (cand_y - sponsor.y), epoch=self.current_epoch)
+                                for t in t_samples
+                            ]
+                            is_overseas = any(z <= 0.0 for z in path_altitudes)
+                            marine_boost = 1.45 if is_overseas else 1.0
+                            
+                            candidate_scores.append((idx_val, fertility * marine_boost, cand_x, cand_y, c_env, is_overseas))
 
-                    if pioneer_candidates:
-                        pioneer_candidates.sort(key=lambda item: item[0], reverse=True)
-                        _, target_x, target_y, target_env, travel_dist = pioneer_candidates[0]
+                    if candidate_scores:
+                        candidate_scores.sort(key=lambda item: item[1], reverse=True)
+                        top_picks = candidate_scores[:min(4, len(candidate_scores))]
+                        pick_idx, _, tx, ty, t_env, is_naval_route = random.choice(top_picks)
 
-                        pioneer_seedling = round(min(0.06, max(0.015, departure_city.local_pop * 0.15)), 3)
-                        departure_city.local_pop = round(departure_city.local_pop - pioneer_seedling, 3)
-                        civ.population = round(sum(s.local_pop for s in civ.settlements), 3)
-
-                        d_count = sum(1 for c in self.civilizations.values() if c.lineage == civ.lineage)
-                        d_name = f"{civ.lineage}-{d_count + 1}"
-                        d_lang = civ.language.fork(d_name, environment=target_env)
-
-                        mid_voyage_x, mid_voyage_y = (departure_city.x + target_x) * 0.5, (departure_city.y + target_y) * 0.5
-                        is_island_colony = self.terrain.sample_environment(mid_voyage_x, mid_voyage_y).altitude <= 0.0
+                        p_pop = round(min(0.05, sponsor.local_pop * 0.15), 3)
+                        sponsor.local_pop = round(sponsor.local_pop - p_pop, 3)
+                        d_name = f"{civ.lineage}-{len(self.civilizations) + 1}"
+                        d_lang = civ.language.fork(d_name, environment=t_env)
 
                         self.active_expeditions.append({
                             "name": d_name, "civ": civ.name, "lineage": civ.lineage,
-                            "origin": [departure_city.x, departure_city.y], "target": [target_x, target_y],
-                            "pop": pioneer_seedling, "lang": d_lang, "progress": 0.0,
-                            "speed": 0.25, "is_naval": is_island_colony, "dist": travel_dist
+                            "origin": [sponsor.x, sponsor.y], "target": [tx, ty],
+                            "pop": p_pop, "lang": d_lang, "progress": 0.0,
+                            "speed": 0.25, "is_naval": is_naval_route, "dist": float(dists_to_sponsor[pick_idx]),
                         })
-
-                        self._ensure_road_edge(departure_city, SettlementNode(d_name, target_x, target_y), is_naval=is_island_colony, traffic_boost=0.15)
-
-                        mode_str = "navigating sea lanes" if is_island_colony else "marching along frontier roads"
-                        self.event_log.append(
-                            f"Expedition: '{civ.name}' pioneers departed from {departure_city.name} "
-                            f"and are {mode_str} toward ({target_x:.2f}, {target_y:.2f}) with {int(pioneer_seedling*100000):,} settlers!"
-                        )
                         break
 
-        # 7. Natural Urban Speciation
-        for civ in list(self.civilizations.values()):
-            if len(civ.settlements) >= 3 and civ.population >= 0.80:
-                primary_city = civ.settlements[0]
-                for s in list(civ.settlements[1:]):
-                    dist_to_capital = math.hypot(s.x - primary_city.x, s.y - primary_city.y)
-                    if dist_to_capital >= 0.32 and s.local_pop >= 0.15 and random.random() < 0.04:
-                        rebel_name = f"{civ.lineage}-{len(self.civilizations) + 1}"
-                        rebel_env = self.terrain.sample_environment(s.x, s.y, epoch=self.current_epoch)
-                        rebel_lang = civ.language.fork(rebel_name, environment=rebel_env)
-
-                        civ.settlements.remove(s)
-                        civ.population = round(sum(other.local_pop for other in civ.settlements), 3)
-
-                        rebel_civ = self.spawn_civilization(
-                            name=rebel_name, language=rebel_lang,
-                            x=s.x, y=s.y, population=s.local_pop,
-                            lineage=civ.lineage, founded_epoch=self.current_epoch
-                        )
-                        rebel_civ.infrastructure_level = max(1.0, s.local_infrastructure)
-                        s.name = f"{rebel_name} (Seat)"
-                        s.is_capital = True
-                        rebel_civ.settlements = [s]
-
-                        self.event_log.append(
-                            f"Linguistic Speciation: Distant city '{s.name}' diverged in dialect and declared independence as '{rebel_name}'!"
-                        )
-                        break
-
-        # 8. Language Evolution
-        for civ in list(self.civilizations.values()):
+        for civ in civ_list:
             if civ.population > 0.005 and civ.settlements:
                 civ.language.evolve(
                     reduction_strength=reduction_strength,
                     enable_neologisms=enable_neologisms,
                     current_generation=self.current_epoch,
+                    infrastructure=civ.infrastructure_level,
                 )

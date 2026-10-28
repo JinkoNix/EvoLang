@@ -1,5 +1,5 @@
 """
-word.py — High-Performance Lexical Item with Lazy Form Caching and Atomic Synchronization.
+word.py — Lexical entry representation with synchronized phonetic, morphological, and semantic state.
 """
 
 from __future__ import annotations
@@ -8,8 +8,11 @@ import math
 from enum import Enum
 from typing import Sequence
 
-from phoneme import Phoneme, PhonemeKind
+from phoneme import Phoneme
 from semantics import SemanticVector, DerivationRecord, DerivationType, ClineStage
+
+# Strip primary stress, secondary stress, and Chao tone letters
+_SUPRASEGMENTAL_TRANS = str.maketrans("", "", "ˈˌ˥˦˧˨˩")
 
 
 class LexicalCategory(Enum):
@@ -18,8 +21,6 @@ class LexicalCategory(Enum):
 
 
 class Morpheme:
-    """A sub-word unit carrying its phonetic payload and derivation lineage."""
-
     __slots__ = ('phonemes', 'root_family_id', 'is_grammatical', 'stage')
 
     def __init__(
@@ -29,10 +30,10 @@ class Morpheme:
         is_grammatical: bool = False,
         stage: ClineStage = ClineStage.FREE_ROOT,
     ):
-        self.phonemes: list[Phoneme] = list(phonemes)
-        self.root_family_id: int = root_family_id
-        self.is_grammatical: bool = is_grammatical
-        self.stage: ClineStage = stage
+        self.phonemes = list(phonemes)
+        self.root_family_id = int(root_family_id)
+        self.is_grammatical = bool(is_grammatical)
+        self.stage = stage
 
     @property
     def ipa(self) -> str:
@@ -47,12 +48,10 @@ class Morpheme:
         )
 
     def __repr__(self) -> str:
-        return f"Morpheme(/{self.ipa}/, root_family={self.root_family_id}, stage={self.stage.value})"
+        return f"Morpheme(/{self.ipa}/, root_family={self.root_family_id})"
 
 
 class Word:
-    """Struct-packed living word with lazy form caching and capacity-relative memory decay."""
-
     __slots__ = (
         'id', 'vector', '_phonemes', '_syllables', 'morphemes',
         'derivation', 'usage_frequency', 'category', 'generation_born',
@@ -91,7 +90,7 @@ class Word:
         self._cached_cost = None
 
         if syllables:
-            flat = []
+            flat: list[Phoneme] = []
             for s in self._syllables:
                 flat.extend(s.to_phonemes())
             self._phonemes = flat
@@ -108,14 +107,12 @@ class Word:
         self.derivation = derivation or DerivationRecord(root_family_id=self.id)
         self.usage_frequency = max(0.01, float(usage_frequency))
         self.category = category
-        self.generation_born = generation_born
+        self.generation_born = int(generation_born)
         self.epochs_idle = 0
 
-        if senses is not None:
-            self.senses = senses if isinstance(senses, tuple) else tuple(senses)
-        else:
-            self.senses = (self.vector,)
+        self.senses = senses if isinstance(senses, tuple) else (tuple(senses) if senses else (self.vector,))
 
+        # Synchronize default morpheme representation
         if not self.morphemes and self._phonemes:
             self.morphemes = [
                 Morpheme(
@@ -127,6 +124,11 @@ class Word:
         elif len(self.morphemes) == 1 and self._phonemes:
             self.morphemes[0].phonemes = list(self._phonemes)
 
+    def _invalidate_cache(self) -> None:
+        self._form = None
+        self._plain_form = None
+        self._cached_cost = None
+
     @property
     def phonemes(self) -> list[Phoneme]:
         return self._phonemes
@@ -134,9 +136,26 @@ class Word:
     @phonemes.setter
     def phonemes(self, new_phonemes: Sequence[Phoneme]) -> None:
         self._phonemes = list(new_phonemes)
-        self._form = None
-        self._plain_form = None
-        self._cached_cost = None
+        self._syllables = []  # Invalidate stale syllables to prevent rendering old form
+        self._invalidate_cache()
+
+        # Synchronize morphemes
+        n_clean = len(self._phonemes)
+        if len(self.morphemes) <= 1:
+            if not self.morphemes:
+                self.morphemes = [Morpheme(self._phonemes, self.derivation.root_family_id)]
+            else:
+                self.morphemes[0].phonemes = list(self._phonemes)
+        else:
+            total_old = sum(len(m.phonemes) for m in self.morphemes) or 1
+            cursor = 0
+            for m_idx, m in enumerate(self.morphemes):
+                if m_idx == len(self.morphemes) - 1:
+                    m.phonemes = list(self._phonemes[cursor:])
+                else:
+                    m_len = max(0, min(n_clean - cursor, int(round(n_clean * (len(m.phonemes) / total_old)))))
+                    m.phonemes = list(self._phonemes[cursor:cursor + m_len])
+                    cursor += m_len
 
     @property
     def syllables(self) -> list:
@@ -146,13 +165,11 @@ class Word:
     def syllables(self, new_syllables: Sequence) -> None:
         self._syllables = list(new_syllables)
         if self._syllables:
-            flat = []
+            flat: list[Phoneme] = []
             for s in self._syllables:
                 flat.extend(s.to_phonemes())
             self._phonemes = flat
-        self._form = None
-        self._plain_form = None
-        self._cached_cost = None
+        self._invalidate_cache()
 
     @property
     def form(self) -> str:
@@ -168,46 +185,30 @@ class Word:
     @property
     def plain_form(self) -> str:
         if self._plain_form is None:
-            raw = self.form
-            self._plain_form = raw.replace("ˈ", "")
+            self._plain_form = self.form.translate(_SUPRASEGMENTAL_TRANS)
         return self._plain_form
 
     @property
     def is_proto_root(self) -> bool:
-        return (
-            self.derivation.derivation_type == DerivationType.ROOT
-            and self.generation_born == 0
-        )
+        return self.derivation.derivation_type == DerivationType.ROOT and self.generation_born == 0
 
     def add_sense(self, new_vec: SemanticVector) -> bool:
-        max_senses = 1 + int(round(1.80 * math.log10(self.usage_frequency + 1.0)))
-        max_senses = max(1, min(5, max_senses))
-
+        max_senses = max(1, min(6, 1 + int(round(1.50 * math.log(self.usage_frequency + 1.0)))))
         if len(self.senses) < max_senses:
             if all(new_vec.distance_to(s) >= 0.15 for s in self.senses):
                 self.senses = self.senses + (new_vec,)
                 return True
         return False
 
-    @property
-    def phonetic_drift_multiplier(self) -> float:
-        log_u = math.log(max(0.10, self.usage_frequency) + 1.0)
-        return max(0.40, min(2.20, 0.50 + log_u * 0.60))
-
-    @property
-    def semantic_drift_multiplier(self) -> float:
-        log_u = math.log(max(0.10, self.usage_frequency) + 1.0)
-        return max(0.50, min(1.80, 0.60 + log_u * 0.40))
-
     def record_usage(self, boost: float = 1.0) -> None:
-        self.usage_frequency += boost
+        self.usage_frequency += max(0.0, float(boost))
         self.epochs_idle = 0
 
     def is_obsolete(self, max_idle_epochs: int = 25, cultural_inertia: float = 1.0) -> bool:
         if self.category == LexicalCategory.FUNCTIONAL_CLOSED or self.is_proto_root:
             return False
-        effective_max_idle = max(12, int(round(max_idle_epochs * max(0.5, cultural_inertia))))
-        return (self.epochs_idle >= effective_max_idle) and (self.usage_frequency < 0.15)
+        effective_max = max(10, int(round(max_idle_epochs * max(0.4, cultural_inertia))))
+        return (self.epochs_idle >= effective_max) and (self.usage_frequency < 0.15)
 
     def copy(self) -> Word:
         w = Word(
@@ -225,6 +226,7 @@ class Word:
         w._form = self._form
         w._plain_form = self._plain_form
         w._cached_cost = self._cached_cost
+        w.epochs_idle = self.epochs_idle
         return w
 
     def __len__(self) -> int:
@@ -238,5 +240,4 @@ class Word:
 
     def __repr__(self) -> str:
         cat = "FUNC" if self.category == LexicalCategory.FUNCTIONAL_CLOSED else "CONTENT"
-        poly = f", {len(self.senses)} senses" if len(self.senses) > 1 else ""
-        return f"Word(#{self.id}, /{self.form}/, U={self.usage_frequency:.2f}, {cat}{poly})"
+        return f"Word(#{self.id}, /{self.form}/, U={self.usage_frequency:.2f}, {cat})"

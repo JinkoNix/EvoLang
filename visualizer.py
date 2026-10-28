@@ -1,12 +1,5 @@
 """
-visualizer.py — High-Performance Real-Time Browser Visualizer for EvoLang.
-Features:
-- Settlement node visualization with detailed chronicles and founder tracking.
-- Interactive City Inspector & Live Pioneer Expedition Tracking.
-- Cached morphosyntactic paradigms and O(1) energetic cost lookups.
-- JSON-sanitized state payload with defensive serialization fallback.
-Run with: python visualizer.py
-Then open: http://localhost:8008
+visualizer.py — Browser Visualizer Server for EvoLang.
 """
 
 from __future__ import annotations
@@ -24,6 +17,10 @@ from grammar import GrammarEngine
 from translator import SemanticTranslator
 from energy import BiomechanicalCostModel
 from syllable import Tone
+
+
+class ReusableHTTPServer(HTTPServer):
+    allow_reuse_address = True
 
 
 class WorldSimulationState:
@@ -52,37 +49,47 @@ class WorldSimulationState:
             self.terrain_grid.append(grid_row)
 
     def _init_default_world(self):
-        # 1. Romano-Italic
-        env_it = self.terrain.sample_environment(0.45, 0.55)
-        prof_it = env_it.generate_profile(name="Romano-Italic Profile", initial_head_directionality=0.48, population=0.55)
-        lang_it = Language("Romano-Italic", profile=prof_it, environment=env_it, population=0.55)
-        lang_it.populate_default_phonemes()
-        lang_it.generate_lexicon()
-        self.world.spawn_civilization("Romano-Italic", lang_it, x=0.45, y=0.55, population=0.55)
+        best_cradle = (0.50, 0.50)
+        best_score = -1.0
 
-        # 2. Yamato-Japonic
-        env_jp = self.terrain.sample_environment(0.85, 0.40)
-        prof_jp = env_jp.generate_profile(name="Yamato-Japonic Profile", initial_head_directionality=0.18, population=0.45)
-        lang_jp = Language("Yamato-Japonic", profile=prof_jp, environment=env_jp, population=0.45)
-        lang_jp.populate_default_phonemes()
-        lang_jp.generate_lexicon()
-        self.world.spawn_civilization("Yamato-Japonic", lang_jp, x=0.85, y=0.40, population=0.45)
+        for r in range(10, 40):
+            for c in range(10, 40):
+                cx, cy = c / 50.0, r / 50.0
+                env = self.terrain.sample_environment(cx, cy)
+                if 0.12 <= env.altitude <= 0.32:
+                    veg = env.emergent_vegetation(population=0.0)
+                    score = veg * math.exp(-(((env.temperature - 0.55) / 0.25) ** 2 + ((env.humidity - 0.55) / 0.25) ** 2))
+                    if score > best_score:
+                        best_score = score
+                        best_cradle = (cx, cy)
 
-        # 3. Alpine-Highlands
-        env_alp = self.terrain.sample_environment(0.65, 0.80)
-        prof_alp = env_alp.generate_profile(name="Alpine-Highlands Profile", initial_head_directionality=0.55, population=0.30)
-        lang_alp = Language("Alpine-Highlands", profile=prof_alp, environment=env_alp, population=0.30)
-        lang_alp.populate_default_phonemes()
-        lang_alp.generate_lexicon()
-        self.world.spawn_civilization("Alpine-Highlands", lang_alp, x=0.65, y=0.80, population=0.30)
+        cradle_x, cradle_y = best_cradle
+        env_cradle = self.terrain.sample_environment(cradle_x, cradle_y)
+        prof_cradle = env_cradle.generate_profile(
+            name="Proto-Cradle Profile",
+            initial_head_directionality=0.50,
+            population=0.035
+        )
+        lang_cradle = Language("Proto-Cradle", profile=prof_cradle, environment=env_cradle, population=0.035)
+        lang_cradle.populate_default_phonemes()
+        lang_cradle.generate_lexicon()
 
-        self.event_log.append("World initialized with 3 primordial civilizations.")
+        self.world.spawn_civilization(
+            "Proto-Cradle",
+            lang_cradle,
+            x=cradle_x,
+            y=cradle_y,
+            population=0.035,
+            lineage="Cradle",
+            founded_epoch=0
+        )
+        self.event_log.append(f"World initialized with primordial seat 'Proto-Cradle' on emerged soil (Alt: {env_cradle.altitude:.2f}).")
 
     def step(self, epochs: int = 1):
         for _ in range(epochs):
             self.world.step_epoch(reduction_strength=0.75, enable_neologisms=True, parallel=False)
             if self.world.current_epoch % 20 == 0:
-                self.event_log.append(f"Epoch {self.world.current_epoch}: Regional adaptation and linguistic drift active.")
+                self.event_log.append(f"Epoch {self.world.current_epoch}: Regional adaptation active.")
             if len(self.event_log) > 40:
                 self.event_log = self.event_log[-40:]
 
@@ -109,50 +116,30 @@ class WorldSimulationState:
             if cached_ui is None or (self.world.current_epoch - paradigm_age) >= 5:
                 noun_classes_data = []
                 living_nouns = [w for w in civ.language.words.values() if GrammarEngine.get_part_of_speech(w) == "Noun"]
-                if paradigm.noun_classes:
-                    for n_cls in paradigm.noun_classes:
-                        matching = [w for w in living_nouns if GrammarEngine.classify_noun_dynamically(w, paradigm, civ.language) == n_cls]
-                        sample_w = matching[0] if matching else (living_nouns[0] if living_nouns else list(civ.language.words.values())[0])
-                        decl = GrammarEngine.get_noun_declension_table(sample_w, civ.language, paradigm)
-                        noun_classes_data.append({
-                            "id": n_cls.class_id, "label": n_cls.label,
-                            "marker": f"/{n_cls.marker.form}/" if n_cls.marker else "Ø",
-                            "sample_form": sample_w.form,
-                            "sample_gloss": SemanticTranslator.translate(sample_w, civ.language),
-                            "declension": decl
-                        })
-                else:
-                    sample_w = living_nouns[0] if living_nouns else list(civ.language.words.values())[0]
-                    decl = GrammarEngine.get_noun_declension_table(sample_w, civ.language, paradigm)
-                    noun_classes_data.append({
-                        "id": 1, "label": "Universal Noun Class", "marker": "Ø",
-                        "sample_form": sample_w.form,
-                        "sample_gloss": SemanticTranslator.translate(sample_w, civ.language),
-                        "declension": decl
-                    })
+                sample_w = living_nouns[0] if living_nouns else list(civ.language.words.values())[0]
+                decl = GrammarEngine.get_noun_declension_table(sample_w, civ.language, paradigm)
+                noun_classes_data.append({
+                    "id": 1, "label": "Universal Noun Declension", "marker": "Ø",
+                    "sample_form": sample_w.form,
+                    "sample_gloss": SemanticTranslator.translate(sample_w, civ.language),
+                    "declension": decl
+                })
 
                 verb_classes_data = []
                 living_verbs = [w for w in civ.language.words.values() if GrammarEngine.get_part_of_speech(w) == "Verb"]
-                if paradigm.verb_classes:
-                    for v_cls in paradigm.verb_classes:
-                        matching = [w for w in living_verbs if GrammarEngine.classify_verb_dynamically(w, paradigm, civ.language).class_id == v_cls.class_id]
-                        sample_v = matching[0] if matching else (living_verbs[0] if living_verbs else list(civ.language.words.values())[0])
-                        conj = GrammarEngine.get_verb_conjugation_table(sample_v, civ.language, paradigm)
-                        verb_classes_data.append({
-                            "id": v_cls.class_id, "label": v_cls.label, "strategy": v_cls.morph_strategy,
-                            "aspect": v_cls.aspect_label, "thematic": f"/{v_cls.thematic_marker.form}/" if v_cls.thematic_marker else "Ø",
-                            "sample_form": sample_v.form,
-                            "sample_gloss": SemanticTranslator.translate(sample_v, civ.language),
-                            "conjugation": conj
-                        })
-                else:
-                    sample_v = living_verbs[0] if living_verbs else list(civ.language.words.values())[0]
-                    conj = GrammarEngine.get_verb_conjugation_table(sample_v, civ.language, paradigm)
-                    verb_classes_data.append({
-                        "id": 1, "label": "Universal Verb Conjugation", "strategy": "concatenative",
-                        "aspect": "Aorist/Perf", "thematic": "Ø", "sample_form": sample_v.form,
-                        "sample_gloss": SemanticTranslator.translate(sample_v, civ.language), "conjugation": conj
-                    })
+                sample_v = living_verbs[0] if living_verbs else list(civ.language.words.values())[0]
+                conj = GrammarEngine.get_verb_conjugation_table(sample_v, civ.language, paradigm)
+                v_cls = paradigm.verb_classes[0] if paradigm.verb_classes else None
+                verb_classes_data.append({
+                    "id": 1,
+                    "label": v_cls.label if v_cls else "Regular Verb",
+                    "strategy": v_cls.morph_strategy if v_cls else "analytic",
+                    "aspect": v_cls.aspect_label if v_cls else "Aspectual",
+                    "thematic": "Ø",
+                    "sample_form": sample_v.form,
+                    "sample_gloss": SemanticTranslator.translate(sample_v, civ.language),
+                    "conjugation": conj
+                })
 
                 civ._cached_ui_paradigm = (noun_classes_data, verb_classes_data, sample_w, sample_v)
                 civ._cached_ui_epoch = self.world.current_epoch
@@ -206,13 +193,16 @@ class WorldSimulationState:
                 for s in getattr(civ, "settlements", [])
             ]
 
+            tension_val = round(getattr(civ.language, "sociolinguistic_tension", 0.0), 3)
+            standard_status = "Classical Norm" if tension_val < 0.20 else ("Diglossia" if tension_val < 0.45 else "Reform Due")
+
             civs_data.append({
                 "name": name,
                 "x": civ.x, "y": civ.y,
                 "population": round(civ.population, 3),
                 "alt": round(env.altitude, 2), "hum": round(env.humidity, 2), "temp": round(env.temperature, 2),
                 "veg": round(actual_veg, 2),
-                "season": "Summer (Peak Growth)" if env.season_phase > 0.35 else ("Winter (Cold Dormancy)" if env.season_phase < -0.35 else "Equinox Transition"),
+                "season": "Summer" if env.season_phase > 0.35 else ("Winter" if env.season_phase < -0.35 else "Equinox"),
                 "economy": {
                     "grain": round(civ.economy.grain, 1),
                     "livestock": round(civ.economy.livestock, 1),
@@ -226,6 +216,8 @@ class WorldSimulationState:
                 "entropy": stats.get("entropy_evenness", 1.0),
                 "mean_cost": mean_cost,
                 "instability": instability,
+                "sociolinguistic_tension": tension_val,
+                "standard_status": standard_status,
                 "active_series": active_series,
                 "word_order": civ.language.word_order,
                 "head_dir": round(civ.language.profile.head_directionality, 2),
@@ -280,7 +272,6 @@ class WorldSimulationState:
                     })
             live_terrain.append(grid_row)
 
-        # JSON-SAFE SANITIZATION FOR EXPEDITIONS (Strips internal Language objects)
         expeditions_data = [
             {
                 "name": str(exp.get("name", "")),
@@ -328,6 +319,7 @@ class WorldSimulationState:
             "terrain": live_terrain,
         }
 
+
 STATE = WorldSimulationState()
 
 
@@ -342,18 +334,22 @@ class EvoLangHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/state":
             self._set_json_headers()
-            # default=str guarantees safe fallback without 500 TypeError crashes
             self.wfile.write(json.dumps(STATE.get_summary_state(), default=str).encode("utf-8"))
         elif parsed.path == "/" or parsed.path == "/index.html":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
-            html_path = os.path.join(os.path.dirname(__file__), "index.html")
+
+            base_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+            html_path = os.path.join(base_dir, "index.html")
+            if not os.path.exists(html_path):
+                html_path = os.path.join(os.getcwd(), "index.html")
+
             if os.path.exists(html_path):
                 with open(html_path, "rb") as f:
                     self.wfile.write(f.read())
             else:
-                self.wfile.write(b"<h1>index.html not found. Place it in the same directory.</h1>")
+                self.wfile.write(b"<h1>index.html not found. Place it in the project directory.</h1>")
         else:
             self.send_error(404, "Endpoint not found")
 
@@ -366,7 +362,6 @@ class EvoLangHandler(BaseHTTPRequestHandler):
             epochs_to_step = int(payload.get("epochs", 1))
             STATE.step(epochs_to_step)
             self._set_json_headers()
-            # default=str guarantees safe fallback without 500 TypeError crashes
             self.wfile.write(json.dumps(STATE.get_summary_state(), default=str).encode("utf-8"))
         else:
             self.send_error(404, "Endpoint not found")
@@ -374,7 +369,7 @@ class EvoLangHandler(BaseHTTPRequestHandler):
 
 def start_server(port: int = 8008):
     server_address = ("", port)
-    httpd = HTTPServer(server_address, EvoLangHandler)
+    httpd = ReusableHTTPServer(server_address, EvoLangHandler)
     print(f"\n==================================================================")
     print(f"  EVOLANG BIOMECHANICAL & SETTLEMENT OBSERVER RUNNING")
     print(f"  Open your browser at: http://localhost:{port}")

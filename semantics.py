@@ -1,6 +1,6 @@
 """
 semantics.py — Continuous 7D Cognitive Space, Typed Derivation Trees, and Biological Prototype Anchors.
-Optimized with unrolled Euclidean metric math and continuous exponential grammaticalization physics.
+Optimized with dual scalar-tuple and contiguous float32 tensor backings.
 """
 
 from __future__ import annotations
@@ -9,11 +9,8 @@ import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Sequence
+import numpy as np
 
-
-# =====================================================================
-# Typological Enums & Records
-# =====================================================================
 
 class ClineStage(Enum):
     FREE_ROOT = "Free Root"
@@ -49,11 +46,7 @@ class DerivationRecord:
     provenance: LoanProvenance | None = None
 
 
-# =====================================================================
-# Continuous Grammaticalization Constants
-# =====================================================================
-
-_CLINE_DEPTH: dict[ClineStage, float] = {
+_CLINE_DEPTHS: dict[ClineStage, float] = {
     ClineStage.FREE_ROOT: 0.00,
     ClineStage.PERIPHRASIS: 0.20,
     ClineStage.CLITIC: 0.45,
@@ -62,19 +55,21 @@ _CLINE_DEPTH: dict[ClineStage, float] = {
     ClineStage.ZERO: 1.00,
 }
 
-_LAMBDA_CONCRETENESS = 2.40
-_LAMBDA_ANIMACY = 2.80
-_LAMBDA_POTENCY = 1.80
+_BASE_CLINE_DECAY: tuple[float, float, float, float, float, float, float] = (
+    2.40,  # Concreteness: physical -> abstract bleaching
+    2.80,  # Animacy: agentive -> impersonal grammaticalization
+    0.00,  # Valence: sentiment preserved
+    1.80,  # Potency: loss of physical force
+    0.00,  # Dynamism: aspectual tracking
+    0.00,  # Sociality: honorific/clusivity tracking
+    0.00,  # Extension: spatial/deictic tracking
+)
 
-
-# =====================================================================
-# 7D Semantic Vector
-# =====================================================================
 
 class SemanticVector:
-    """A continuous coordinate point in 7D cognitive semantic space (0.0 to 1.0)."""
+    """A continuous coordinate point in 7D cognitive semantic space [0.0, 1.0]."""
 
-    __slots__ = ('coords',)
+    __slots__ = ('_coords', '_data')
 
     DIMENSION_NAMES = (
         "concreteness",
@@ -95,37 +90,54 @@ class SemanticVector:
         dynamism: float,
         sociality: float,
         extension: float,
+        _data: np.ndarray | None = None,
     ):
-        self.coords: tuple[float, float, float, float, float, float, float] = (
-            max(0.0, min(1.0, float(concreteness))),
-            max(0.0, min(1.0, float(animacy))),
-            max(0.0, min(1.0, float(valence))),
-            max(0.0, min(1.0, float(potency))),
-            max(0.0, min(1.0, float(dynamism))),
-            max(0.0, min(1.0, float(sociality))),
-            max(0.0, min(1.0, float(extension))),
-        )
+        c0 = max(0.0, min(1.0, float(concreteness)))
+        c1 = max(0.0, min(1.0, float(animacy)))
+        c2 = max(0.0, min(1.0, float(valence)))
+        c3 = max(0.0, min(1.0, float(potency)))
+        c4 = max(0.0, min(1.0, float(dynamism)))
+        c5 = max(0.0, min(1.0, float(sociality)))
+        c6 = max(0.0, min(1.0, float(extension)))
+
+        self._coords = (c0, c1, c2, c3, c4, c5, c6)
+        self._data = _data if _data is not None else np.array(self._coords, dtype=np.float32)
+
+    @classmethod
+    def from_array(cls, arr: np.ndarray) -> SemanticVector:
+        clamped = np.clip(arr.astype(np.float32), 0.0, 1.0)
+        c = tuple(float(x) for x in clamped)
+        vec = cls.__new__(cls)
+        vec._coords = c
+        vec._data = clamped
+        return vec
 
     @property
-    def concreteness(self) -> float: return self.coords[0]
+    def coords(self) -> tuple[float, float, float, float, float, float, float]:
+        return self._coords
+
     @property
-    def animacy(self) -> float: return self.coords[1]
+    def data(self) -> np.ndarray:
+        return self._data
+
     @property
-    def valence(self) -> float: return self.coords[2]
+    def concreteness(self) -> float: return self._coords[0]
     @property
-    def potency(self) -> float: return self.coords[3]
+    def animacy(self) -> float: return self._coords[1]
     @property
-    def dynamism(self) -> float: return self.coords[4]
+    def valence(self) -> float: return self._coords[2]
     @property
-    def sociality(self) -> float: return self.coords[5]
+    def potency(self) -> float: return self._coords[3]
     @property
-    def extension(self) -> float: return self.coords[6]
+    def dynamism(self) -> float: return self._coords[4]
+    @property
+    def sociality(self) -> float: return self._coords[5]
+    @property
+    def extension(self) -> float: return self._coords[6]
 
     @property
     def grammaticality_index(self) -> float:
-        """Continuous measure of grammatical status [0.0 = lexical content, 1.0 = pure functional marker]."""
-        c, a = self.coords[0], self.coords[1]
-        lexical_mass = (c + 0.60 * a) / 1.60
+        lexical_mass = (self._coords[0] + 0.60 * self._coords[1]) / 1.60
         return max(0.0, min(1.0, 1.0 - lexical_mass))
 
     @property
@@ -133,8 +145,8 @@ class SemanticVector:
         return self.grammaticality_index >= 0.75
 
     def distance_to(self, other: SemanticVector, weights: Sequence[float] | None = None) -> float:
-        c1 = self.coords
-        c2 = other.coords
+        c1 = self._coords
+        c2 = other._coords
         if weights is None:
             val = (
                 (c1[0] - c2[0]) ** 2 +
@@ -145,47 +157,44 @@ class SemanticVector:
                 (c1[5] - c2[5]) ** 2 +
                 (c1[6] - c2[6]) ** 2
             )
-            return math.sqrt(max(0.0, val))
-        w0, w1, w2, w3, w4, w5, w6 = weights
-        val = (
-            max(0.0, w0) * (c1[0] - c2[0]) ** 2 +
-            max(0.0, w1) * (c1[1] - c2[1]) ** 2 +
-            max(0.0, w2) * (c1[2] - c2[2]) ** 2 +
-            max(0.0, w3) * (c1[3] - c2[3]) ** 2 +
-            max(0.0, w4) * (c1[4] - c2[4]) ** 2 +
-            max(0.0, w5) * (c1[5] - c2[5]) ** 2 +
-            max(0.0, w6) * (c1[6] - c2[6]) ** 2
-        )
-        return math.sqrt(max(0.0, val))
+        else:
+            val = (
+                weights[0] * (c1[0] - c2[0]) ** 2 +
+                weights[1] * (c1[1] - c2[1]) ** 2 +
+                weights[2] * (c1[2] - c2[2]) ** 2 +
+                weights[3] * (c1[3] - c2[3]) ** 2 +
+                weights[4] * (c1[4] - c2[4]) ** 2 +
+                weights[5] * (c1[5] - c2[5]) ** 2 +
+                weights[6] * (c1[6] - c2[6]) ** 2
+            )
+        return math.sqrt(val)
 
     def weighted_distance_to(self, other: SemanticVector, weights: Sequence[float]) -> float:
-        c1 = self.coords
-        c2 = other.coords
-        w0, w1, w2, w3, w4, w5, w6 = weights
+        c1 = self._coords
+        c2 = other._coords
         val = (
-            max(0.0, w0) * (c1[0] - c2[0]) ** 2 +
-            max(0.0, w1) * (c1[1] - c2[1]) ** 2 +
-            max(0.0, w2) * (c1[2] - c2[2]) ** 2 +
-            max(0.0, w3) * (c1[3] - c2[3]) ** 2 +
-            max(0.0, w4) * (c1[4] - c2[4]) ** 2 +
-            max(0.0, w5) * (c1[5] - c2[5]) ** 2 +
-            max(0.0, w6) * (c1[6] - c2[6]) ** 2
+            weights[0] * (c1[0] - c2[0]) ** 2 +
+            weights[1] * (c1[1] - c2[1]) ** 2 +
+            weights[2] * (c1[2] - c2[2]) ** 2 +
+            weights[3] * (c1[3] - c2[3]) ** 2 +
+            weights[4] * (c1[4] - c2[4]) ** 2 +
+            weights[5] * (c1[5] - c2[5]) ** 2 +
+            weights[6] * (c1[6] - c2[6]) ** 2
         )
-        return math.sqrt(max(0.0, val))
+        return math.sqrt(val)
 
     def drift(self, delta: Sequence[float]) -> SemanticVector:
-        c = self.coords
-        d0, d1, d2, d3, d4, d5, d6 = delta
+        c = self._coords
         return SemanticVector(
-            c[0] + d0, c[1] + d1, c[2] + d2,
-            c[3] + d3, c[4] + d4, c[5] + d5, c[6] + d6
+            c[0] + delta[0], c[1] + delta[1], c[2] + delta[2],
+            c[3] + delta[3], c[4] + delta[4], c[5] + delta[5], c[6] + delta[6]
         )
 
     def blend(self, other: SemanticVector, weight: float = 0.5) -> SemanticVector:
-        w1 = max(0.0, min(1.0, weight))
+        w1 = max(0.0, min(1.0, float(weight)))
         w2 = 1.0 - w1
-        c1 = self.coords
-        c2 = other.coords
+        c1 = self._coords
+        c2 = other._coords
         return SemanticVector(
             w1 * c1[0] + w2 * c2[0],
             w1 * c1[1] + w2 * c2[1],
@@ -196,43 +205,36 @@ class SemanticVector:
             w1 * c1[6] + w2 * c2[6],
         )
 
-    def generalize_for_cline(self, stage: ClineStage) -> SemanticVector:
-        """Applies continuous exponential desemanticization (bleaching) along the grammaticalization cline."""
-        t = _CLINE_DEPTH.get(stage, 0.0)
+    def generalize_for_cline(self, stage: ClineStage, cultural_attention: Sequence[float] | None = None) -> SemanticVector:
+        t = _CLINE_DEPTHS.get(stage, 0.0)
         if t <= 0.0:
             return self
 
-        c, a, v, p, d, s, e = self.coords
-        decay_c = math.exp(-_LAMBDA_CONCRETENESS * t)
-        decay_a = math.exp(-_LAMBDA_ANIMACY * t)
-        decay_p = math.exp(-_LAMBDA_POTENCY * t)
+        r0, r1, r2, r3, r4, r5, r6 = _BASE_CLINE_DECAY
+        if cultural_attention is not None:
+            r0 /= max(0.5, float(cultural_attention[0]))
+            r1 /= max(0.5, float(cultural_attention[1]))
 
+        c = self._coords
         return SemanticVector(
-            concreteness=c * decay_c,
-            animacy=a * decay_a,
-            valence=v,
-            potency=p * decay_p,
-            dynamism=d,
-            sociality=s,
-            extension=e,
+            c[0] * math.exp(-r0 * t),
+            c[1] * math.exp(-r1 * t),
+            c[2] * math.exp(-r2 * t),
+            c[3] * math.exp(-r3 * t),
+            c[4] * math.exp(-r4 * t),
+            c[5] * math.exp(-r5 * t),
+            c[6] * math.exp(-r6 * t),
         )
 
     def __iter__(self):
-        return iter(self.coords)
+        return iter(self._coords)
 
     def __repr__(self) -> str:
-        vals = ", ".join(f"{v:.2f}" for v in self.coords)
+        vals = ", ".join(f"{v:.2f}" for v in self._coords)
         return f"SemanticVector({vals})"
 
 
-# =====================================================================
-# Universal Biological & Cognitive Seed Anchors
-# =====================================================================
-
 class SemanticSpace:
-    """Universal biological & cognitive seed vectors with explicit prototype constants."""
-
-    # 1. Physical & Natural Elements
     WATER = SemanticVector(1.0, 0.0, 0.7, 0.5, 0.5, 0.1, 0.4)
     FIRE  = SemanticVector(0.9, 0.1, 0.4, 0.8, 0.9, 0.2, 0.3)
     SUN   = SemanticVector(0.9, 0.1, 0.8, 1.0, 0.6, 0.1, 0.9)
@@ -241,7 +243,6 @@ class SemanticSpace:
     STONE = SemanticVector(1.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.1)
     TREE  = SemanticVector(1.0, 0.4, 0.7, 0.6, 0.2, 0.1, 0.4)
 
-    # 2. Living Entities & Universal Kinship Primaries
     MOTHER = SemanticVector(0.9, 1.0, 0.85, 0.40, 0.40, 0.95, 0.20)
     FATHER = SemanticVector(0.9, 1.0, 0.75, 0.75, 0.60, 0.85, 0.30)
     PERSON = SemanticVector(0.9, 1.0, 0.60, 0.50, 0.60, 0.70, 0.30)
@@ -249,7 +250,6 @@ class SemanticSpace:
     SELF   = SemanticVector(0.8, 1.0, 0.60, 0.50, 0.50, 0.30, 0.10)
     OTHER  = SemanticVector(0.8, 1.0, 0.60, 0.50, 0.50, 0.80, 0.10)
 
-    # 3. Somatic Landmarks
     HEAD  = SemanticVector(0.9, 0.8, 0.6, 0.7, 0.4, 0.3, 0.2)
     BODY  = SemanticVector(1.0, 0.9, 0.6, 0.6, 0.5, 0.4, 0.5)
     EYE   = SemanticVector(0.9, 0.8, 0.6, 0.4, 0.5, 0.3, 0.3)
@@ -257,7 +257,6 @@ class SemanticSpace:
     HEART = SemanticVector(0.7, 0.9, 0.7, 0.6, 0.4, 0.6, 0.2)
     BLOOD = SemanticVector(0.9, 0.6, 0.4, 0.7, 0.5, 0.3, 0.2)
 
-    # 4. Actions & Sensory Perceptions
     MAKE  = SemanticVector(0.5, 0.8, 0.6, 0.6, 0.8, 0.4, 0.3)
     MOVE  = SemanticVector(0.6, 0.7, 0.5, 0.4, 0.8, 0.2, 0.5)
     SEE   = SemanticVector(0.4, 0.8, 0.6, 0.4, 0.5, 0.3, 0.4)
@@ -266,7 +265,6 @@ class SemanticSpace:
     EAT   = SemanticVector(0.8, 0.8, 0.8, 0.5, 0.6, 0.3, 0.2)
     DIE   = SemanticVector(0.5, 0.8, 0.1, 0.8, 0.4, 0.3, 0.6)
 
-    # 5. Evaluatives & Magnitudes (Mini vs. Huge)
     GOOD  = SemanticVector(0.2, 0.3, 1.0, 0.6, 0.3, 0.7, 0.5)
     BAD   = SemanticVector(0.2, 0.3, 0.0, 0.6, 0.4, 0.3, 0.5)
     HUGE  = SemanticVector(0.4, 0.1, 0.6, 0.95, 0.3, 0.1, 0.85)

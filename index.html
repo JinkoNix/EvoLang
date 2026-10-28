@@ -10,7 +10,6 @@
     header { background: #161b22; border-bottom: 1px solid #30363d; padding: 8px 18px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
     h1 { font-size: 1.05rem; color: #58a6ff; letter-spacing: 0.5px; }
 
-    /* Strict 2-Column Workspace: Map on Left, Panel on Right */
     .workspace { display: grid; grid-template-columns: 1fr 460px; flex: 1; min-height: 0; overflow: hidden; }
 
     .map-container { position: relative; background: #05070a; display: flex; align-items: center; justify-content: center; overflow: hidden; min-width: 0; min-height: 0; }
@@ -18,7 +17,6 @@
     .map-layers { position: absolute; bottom: 12px; left: 12px; background: rgba(22, 27, 34, 0.92); padding: 6px 10px; border-radius: 6px; border: 1px solid #30363d; font-size: 0.75rem; z-index: 10; }
     .map-layers select { background: #0e1117; color: #e0e6ed; border: 1px solid #30363d; padding: 3px; border-radius: 4px; }
 
-    /* Right Panel & Controls */
     .right-panel { background: #161b22; border-left: 1px solid #30363d; display: flex; flex-direction: column; overflow: hidden; min-height: 0; height: 100%; }
     .control-deck { background: #21262d; border-bottom: 2px solid #58a6ff; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
     .deck-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -30,12 +28,10 @@
     button.secondary { background: #30363d; }
     button.secondary:hover { background: #8b949e; }
 
-    /* Tab Navigation */
     .tab-bar { display: flex; background: #0e1117; border-bottom: 1px solid #30363d; flex-shrink: 0; }
     .tab-btn { flex: 1; padding: 8px 4px; background: transparent; border: none; color: #8b949e; font-size: 0.75rem; font-weight: 600; cursor: pointer; text-align: center; border-bottom: 2px solid transparent; }
     .tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; background: #161b22; }
 
-    /* Tab Panes */
     .tab-pane { padding: 12px; overflow-y: auto; flex: 1; display: none; flex-direction: column; gap: 10px; min-height: 0; }
     .tab-pane.active { display: flex; }
 
@@ -76,7 +72,6 @@
   </header>
 
   <div class="workspace">
-    <!-- LEFT: MAP AREA -->
     <div class="map-container">
       <canvas id="worldCanvas" width="600" height="600"></canvas>
       <div class="map-layers">
@@ -91,7 +86,6 @@
       </div>
     </div>
 
-    <!-- RIGHT: CONTROL DECK & INSPECTOR -->
     <div class="right-panel">
       <div class="control-deck">
         <div class="deck-row">
@@ -112,7 +106,6 @@
         </select>
       </div>
 
-      <!-- 6 Clean Tabs including City Inspector -->
       <div class="tab-bar">
         <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
         <button class="tab-btn" onclick="switchTab('population')">Population</button>
@@ -137,10 +130,14 @@
         </div>
 
         <div class="card">
-          <div class="card-title">Thermodynamic & Evolutionary Physics</div>
+          <div class="card-title">Thermodynamic & Sociolinguistic Physics</div>
           <div class="stat-row"><span>Mean Articulatory Effort:</span><span class="stat-val" style="color: #f2cc60;" id="dispCost">-</span></div>
           <div class="stat-row"><span>C:V Segment Ratio:</span><span class="stat-val" id="dispCV">-</span></div>
           <div class="stat-row"><span>Phonemic Entropy:</span><span class="stat-val" id="dispEntropy">-</span></div>
+          <div class="stat-row">
+            <span>Sociolinguistic Tension:</span>
+            <span class="stat-val" style="color: #d2a8ff;" id="dispTension">-</span>
+          </div>
           <div class="stat-row" style="margin-top: 4px;">
             <span>Phase Transition Pressure:</span>
             <span class="stat-val" id="dispInstability">-</span>
@@ -380,6 +377,10 @@
       safeSet('dispCV', civ.cv_ratio ?? '-');
       safeSet('dispEntropy', civ.entropy ?? '-');
 
+      const tension = civ.sociolinguistic_tension ?? 0.0;
+      const statusText = civ.standard_status ?? (tension < 0.20 ? 'Classical Norm' : (tension < 0.45 ? 'Diglossia' : 'Reform Due'));
+      safeSet('dispTension', `${(tension * 100).toFixed(1)}% (${statusText})`);
+
       const inst = civ.instability ?? 0.0;
       safeSet('dispInstability', `${inst.toFixed(2)} / 4.50`);
       const instPct = Math.min(100, (inst / 4.50) * 100);
@@ -551,7 +552,8 @@
 
       const cTable = document.getElementById('conjTable');
       if (cTable && vc.conjugation) {
-        cTable.innerHTML = '<tr><th>TAM / Person</th><th>Surface Form</th></tr>';
+        dTable_title = vc.strategy === 'analytic' ? 'Aspect / Mood / Form' : 'TAM / Person';
+        cTable.innerHTML = `<tr><th>${dTable_title}</th><th>Surface Form</th></tr>`;
         for (const [k, v] of Object.entries(vc.conjugation)) {
           cTable.innerHTML += `<tr><td>${k}</td><td style="color:#58a6ff; font-weight:bold;">${formatIpa(v)}</td></tr>`;
         }
@@ -587,34 +589,19 @@
       const cellH = h / res;
       const layer = document.getElementById('layerSelect').value;
 
-      const lineageBaseColors = {
-        "Romano-Italic": { r: 88, g: 166, b: 255 },
-        "Yamato-Japonic": { r: 240, g: 136, b: 62 },
-        "Alpine-Highlands": { r: 210, g: 168, b: 255 },
-        "Default": { r: 126, g: 231, b: 135 }
-      };
-
       function getCivColor(civName) {
-        let base = null;
-        for (const k in lineageBaseColors) {
-          if (civName.includes(k.split('-')[0])) {
-            base = lineageBaseColors[k];
-            break;
-          }
-        }
-        if (!base) base = lineageBaseColors["Default"];
-
         const parts = civName.split('-');
         const lastPart = parts[parts.length - 1];
         const branchNum = parseInt(lastPart) || 1;
 
+        const base = { r: 88, g: 166, b: 255 };
         if (branchNum === 1) return base;
 
-        const shift = ((branchNum - 1) * 35) % 90;
+        const shift = ((branchNum - 1) * 45) % 180;
         return {
-          r: Math.min(255, Math.max(20, base.r + (branchNum % 2 === 0 ? shift : -shift))),
-          g: Math.min(255, Math.max(20, base.g + (branchNum % 3 === 0 ? shift : -shift))),
-          b: Math.min(255, Math.max(20, base.b + (branchNum % 2 === 1 ? shift : -shift)))
+          r: Math.min(255, Math.max(30, (base.r + shift * 2) % 255)),
+          g: Math.min(255, Math.max(30, (base.g + shift * 3) % 255)),
+          b: Math.min(255, Math.max(30, (base.b + shift * 5) % 255))
         };
       }
 
@@ -632,25 +619,20 @@
             if (layer === 'pop') {
               const d = cell.density || 0.0;
               if (d <= 0.03) {
-                // Rural wilderness / dark topography relief
                 const lum = Math.floor(alt * 45 + 18);
                 ctx.fillStyle = `rgb(${lum}, ${lum + 3}, ${lum + 6})`;
               } else if (d < 0.12) {
-                // Agricultural countryside: Deep Warm Ochre/Brown
                 const r = Math.floor(d * 450 + 60);
                 const g = Math.floor(d * 180 + 15);
                 ctx.fillStyle = `rgb(${r}, ${g}, 12)`;
               } else if (d < 0.35) {
-                // Growing Provincial Towns: Radiant Amber/Orange
                 const r = Math.floor(180 + d * 180);
                 const g = Math.floor(60 + (d - 0.12) * 450);
                 ctx.fillStyle = `rgb(${Math.min(255, r)}, ${Math.min(200, g)}, 15)`;
               } else if (d < 0.65) {
-                // Major Regional Cities: Golden Yellow Core
                 const g = Math.floor(160 + (d - 0.35) * 280);
                 ctx.fillStyle = `rgb(255, ${Math.min(240, g)}, 30)`;
               } else {
-                // Densely Packed Imperial Metropolises: Blazing White-Gold Nucleus
                 const b = Math.floor((d - 0.65) * 550);
                 ctx.fillStyle = `rgb(255, 255, ${Math.min(255, b)})`;
               }
@@ -677,14 +659,13 @@
         }
       }
 
-      // 2. Territory Views & Solid Borders (including maritime waters)
+      // 2. Borders
       for (let r = 0; r < res; r++) {
         for (let c = 0; c < res; c++) {
           const cell = grid[r][c];
           if (!cell.owner) continue;
 
           const tc = getCivColor(cell.owner);
-
           if (layer !== 'pop') {
             ctx.fillStyle = `rgba(${tc.r}, ${tc.g}, ${tc.b}, 0.05)`;
             ctx.fillRect(c * cellW, r * cellH, cellW, cellH);
@@ -708,9 +689,7 @@
         }
       }
 
-      // =====================================================================
-      // 2B. RENDER VECTOR HIGHWAY & MARITIME SEA LANES (Clean, Crisp Vector Lines!)
-      // =====================================================================
+      // 3. Roads
       if (worldState.roads) {
         worldState.roads.forEach(road => {
           const x0 = road.x0 * w, y0 = road.y0 * h;
@@ -719,12 +698,10 @@
 
           ctx.beginPath();
           if (road.is_naval) {
-            // Maritime Shipping Route: Nautical Cyan Dashed Vector Line
             ctx.setLineDash([4, 4]);
             ctx.strokeStyle = "rgba(121, 192, 255, 0.50)";
             ctx.lineWidth = 1.4;
           } else {
-            // Land Highway: Warm Amber / Gold Solid Vector Line
             ctx.setLineDash([]);
             if (level >= 2.0) {
               ctx.strokeStyle = "rgba(255, 215, 0, 0.70)";
@@ -744,71 +721,7 @@
         });
       }
 
-      // 3. Trade Corridors: Between Closest Trading Cities
-      if (worldState.trade_routes) {
-        ctx.strokeStyle = "#7ee787bb";
-        ctx.lineWidth = 1.8;
-        ctx.setLineDash([4, 4]);
-        worldState.trade_routes.forEach(route => {
-          const c1 = worldState.civs.find(c => c.name === route[0]);
-          const c2 = worldState.civs.find(c => c.name === route[1]);
-          if (c1 && c2 && c1.settlements && c2.settlements && c1.settlements.length > 0 && c2.settlements.length > 0) {
-            let bestPair = null;
-            let minDist = 9999;
-            c1.settlements.forEach(s1 => {
-              c2.settlements.forEach(s2 => {
-                const d = Math.hypot(s1.x - s2.x, s1.y - s2.y);
-                if (d < minDist) {
-                  minDist = d;
-                  bestPair = [s1, s2];
-                }
-              });
-            });
-
-            if (bestPair) {
-              ctx.beginPath();
-              ctx.moveTo(bestPair[0].x * w, bestPair[0].y * h);
-              ctx.lineTo(bestPair[1].x * w, bestPair[1].y * h);
-              ctx.stroke();
-            }
-          }
-        });
-        ctx.setLineDash([]);
-      }
-
-      // 4. Conflicts: Between Contested Frontier Citadels
-      if (worldState.conflicts) {
-        ctx.strokeStyle = "#ff7b72ee";
-        ctx.lineWidth = 2.2;
-        ctx.setLineDash([5, 3]);
-        worldState.conflicts.forEach(conflict => {
-          const c1 = worldState.civs.find(c => c.name === conflict[0]);
-          const c2 = worldState.civs.find(c => c.name === conflict[1]);
-          if (c1 && c2 && c1.settlements && c2.settlements && c1.settlements.length > 0 && c2.settlements.length > 0) {
-            let bestPair = null;
-            let minDist = 9999;
-            c1.settlements.forEach(s1 => {
-              c2.settlements.forEach(s2 => {
-                const d = Math.hypot(s1.x - s2.x, s1.y - s2.y);
-                if (d < minDist) {
-                  minDist = d;
-                  bestPair = [s1, s2];
-                }
-              });
-            });
-
-            if (bestPair) {
-              ctx.beginPath();
-              ctx.moveTo(bestPair[0].x * w, bestPair[0].y * h);
-              ctx.lineTo(bestPair[1].x * w, bestPair[1].y * h);
-              ctx.stroke();
-            }
-          }
-        });
-        ctx.setLineDash([]);
-      }
-
-      // 4B. ACTIVE PIONEER CONVOYS: Moving across land and sea in real-time
+      // 4. Expeditions
       if (worldState.expeditions) {
         worldState.expeditions.forEach(exp => {
           const ox = exp.origin[0] * w, oy = exp.origin[1] * h;
@@ -833,56 +746,14 @@
           ctx.strokeStyle = "#000000";
           ctx.lineWidth = 1.2;
           ctx.stroke();
-
-          ctx.font = "9px monospace";
-          ctx.fillStyle = exp.is_naval ? "#79c0ff" : "#ffd33d";
-          ctx.fillText(`⚑ ${exp.civ} pioneers (${Math.round(exp.pop * 100)}k)`, curX + 6, curY + 3);
         });
       }
 
-      // 4C. RENDER ABANDONED RUINS (Archaeological Sites on the Map!)
-      if (worldState.ruins) {
-        worldState.ruins.forEach(ruin => {
-          const rx = ruin.x * w;
-          const ry = ruin.y * h;
-
-          // Weathered dashed stone perimeter
-          ctx.beginPath();
-          ctx.arc(rx, ry, 4.0, 0, Math.PI * 2);
-          ctx.setLineDash([2, 2]);
-          ctx.strokeStyle = "rgba(160, 160, 160, 0.70)";
-          ctx.lineWidth = 1.2;
-          ctx.stroke();
-          ctx.setLineDash([]);
-
-          // Ruined stone pillar core
-          ctx.beginPath();
-          ctx.arc(rx, ry, 1.8, 0, Math.PI * 2);
-          ctx.fillStyle = "#8b949e";
-          ctx.fill();
-
-          // Check mouse hover on ruins
-          if (Math.hypot(rx - mouseX, ry - mouseY) <= 12) {
-            hoveredSettlement = {
-              s: {
-                name: `🏛 Ruins of ${ruin.name}`,
-                pop: 0,
-                fort: 0,
-                founded_epoch: ruin.epoch || 0,
-                founder: ruin.founder || "Ancient Realm"
-              },
-              civ: { name: "Unclaimed Wilderness" },
-              isPrimary: false
-            };
-          }
-        });
-      }
-
-      // 5. Urban Settlements: DYNAMIC POPULATION RADIUS & Clean Nodes
-      const renderQueue = [];
+      // 5. Settlements
       const mouseX = window._lastMouseX || -999;
       const mouseY = window._lastMouseY || -999;
       let hoveredSettlement = null;
+      const renderQueue = [];
 
       worldState.civs.forEach(civ => {
         const isSelected = (civ.name === selectedCivName);
@@ -896,55 +767,31 @@
           const cityPop = s.pop || 0.05;
           const isPrimary = (idx === 0);
 
-          // DYNAMIC ARCHITECTURAL SIZING BY LOCAL CITY POPULATION
-          // Small outpost (3k): 3.2px | Regional city (50k): 6.5px | Imperial Metropolis (150k+): 12.5px
           const nodeRadius = Math.max(3.2, Math.min(13.5, Math.sqrt(cityPop * 52.0)));
-
-          // Check mouse hover proximity (14px hitbox)
           const distToMouse = Math.hypot(sx - mouseX, sy - mouseY);
-          const isHovered = distToMouse <= Math.max(12.0, nodeRadius + 4);
-          if (isHovered) {
+          if (distToMouse <= Math.max(12.0, nodeRadius + 4)) {
             hoveredSettlement = { s, civ, isPrimary };
           }
 
-          // Outer stone bastion ring
           ctx.beginPath();
           ctx.arc(sx, sy, nodeRadius + (isPrimary ? 2.2 : 1.4), 0, Math.PI * 2);
-          ctx.strokeStyle = isHovered 
-            ? "#ffffff" 
-            : (isSelected ? "rgba(88, 166, 255, 0.95)" : "rgba(255, 255, 255, 0.40)");
-          ctx.lineWidth = isHovered ? 2.0 : 1.2;
+          ctx.strokeStyle = isSelected ? "rgba(88, 166, 255, 0.95)" : "rgba(255, 255, 255, 0.40)";
+          ctx.lineWidth = 1.2;
           ctx.stroke();
 
-          // Inner Citadel Core
           ctx.beginPath();
           ctx.arc(sx, sy, nodeRadius, 0, Math.PI * 2);
-          ctx.fillStyle = isSelected 
-            ? (isPrimary ? "#58a6ff" : "#d2a8ff") 
-            : (isPrimary ? "#f0f6fc" : "#8b949e");
+          ctx.fillStyle = isSelected ? (isPrimary ? "#58a6ff" : "#d2a8ff") : (isPrimary ? "#f0f6fc" : "#8b949e");
           ctx.fill();
-          ctx.strokeStyle = "#0d1117";
-          ctx.lineWidth = 1.0;
-          ctx.stroke();
-
-          // Central keep pip for major metropolises
-          if (cityPop > 0.8) {
-            ctx.beginPath();
-            ctx.arc(sx, sy, 1.8, 0, Math.PI * 2);
-            ctx.fillStyle = isSelected ? "#ffffff" : "#161b22";
-            ctx.fill();
-          }
 
           renderQueue.push({
             name: s.name, x: sx, y: sy,
             rawX: s.x, isPrimary: isPrimary,
-            isSelected: isSelected, pop: cityPop,
-            civName: civ.name, cells: civ.occupied_cells || 0
+            isSelected: isSelected, civName: civ.name, cells: civ.occupied_cells || 0
           });
         });
       });
 
-      // Show/Hide Floating Tooltip on Hover
       const tooltip = document.getElementById('cityTooltip');
       if (hoveredSettlement && tooltip) {
         const { s, civ } = hoveredSettlement;
@@ -961,45 +808,25 @@
         tooltip.style.display = 'none';
       }
 
-      // Pass 2: Clean Label Rendering (ONLY Primary Metropolises get text on map — NO MORE LABEL SPAM!)
       renderQueue.forEach(s => {
         if (!s.isPrimary) return;
-
         ctx.font = s.isSelected ? "bold 11px monospace" : "10px monospace";
-        ctx.shadowColor = "#000000";
-        ctx.shadowBlur = 4;
-
-        const fullText = `${s.civName} [${s.cells}px]`;
-        const textWidth = ctx.measureText(fullText).width;
-
-        let align = "left";
-        let anchorX = s.x + 10;
-        if (s.rawX >= 0.60 || s.x + 10 + textWidth > w - 8) {
-          align = "right";
-          anchorX = s.x - 10;
-        }
-
-        ctx.textAlign = align;
         ctx.fillStyle = s.isSelected ? "#58a6ff" : "#ffffff";
-        ctx.fillText(fullText, anchorX, s.y + 3);
+        ctx.textAlign = s.rawX >= 0.60 ? "right" : "left";
+        const anchorX = s.rawX >= 0.60 ? s.x - 10 : s.x + 10;
+        ctx.fillText(`${s.civName} [${s.cells}px]`, anchorX, s.y + 3);
       });
-
-      ctx.textAlign = "left";
-      ctx.shadowBlur = 0;
     }
 
     const canvas = document.getElementById('worldCanvas');
-      canvas.addEventListener('mousemove', e => {
-        const rect = canvas.getBoundingClientRect();
-        window._lastMouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
-        window._lastMouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
-        
-        // Exact Screen Client Coordinates for the Floating Tooltip:
-        window._clientMouseX = e.clientX;
-        window._clientMouseY = e.clientY;
-        
-        renderWorld();
-      });
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      window._lastMouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
+      window._lastMouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
+      window._clientMouseX = e.clientX;
+      window._clientMouseY = e.clientY;
+      renderWorld();
+    });
 
     canvas.addEventListener('mouseleave', () => {
       window._lastMouseX = -999;
