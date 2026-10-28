@@ -1,44 +1,69 @@
 # EvoLang
 
-**Generative Linguistic Atlas & Biomechanical Evolution Observer**  
-A continuous, first-principles computational linguistics and geopolitical simulation engine. Languages in EvoLang evolve under physical articulatory mechanics, 7D cognitive semantics, and emergent demographic dynamics.
+**Generative Linguistic Atlas & Biomechanical Evolution Simulator**
 
+EvoLang is a continuous computational linguistics engine that simulates language evolution from physical articulatory mechanics, environmental acoustics, 7D cognitive semantics, and territorial demographics.
 
-## Key Features
+Instead of procedural sound-change rules (`k -> tʃ`) or hardcoded grammar templates, languages emerge and diversify through thermodynamic trade-offs between motor effort, acoustic transmission, and communicative contrast.
 
-### 1. Biomechanical & Thermodynamic Phonetics
-* **Aerodynamic Constraints:** Models Phonation Threshold Pressure (PTP), Ohala’s supraglottal impedance walls, and respiratory moisture taxes across cold/arid biomes.
-* **Continuous Articulatory Space:** Maps segments directly to continuous 3D coordinates (place/height, manner/backness, voicing/rounding) and authentic IPA.
-* **Natural Prominence & Tonogenesis:** Weight-to-Stress emerges organically from acoustic mass. Tonal registers and contours evolve diachronically from onset voicing and laryngeal coda decay.
+## Architecture & Systems
 
-### 2. 7D Cognitive Semantics & Generative Grammar
-* **Unified Cognitive Space:** Words occupy continuous vectors across 7 dimensions: *Concreteness, Animacy, Valence, Potency, Dynamism, Sociality, Extension*.
-* **Emergent Typology:** Derives Morphosyntactic Alignment (Nominative-Accusative vs. Ergative-Absolutive), Differential Object Marking (DOM), Noun Classes, Verb Conjugations, and Numeral Radixes directly from cultural attention vectors.
-* **Non-Concatenative Morphology:** Generates vocalic ablaut, Semitic-style root-and-pattern transfixation, reduplication, and affix erosion along grammaticalization clines.
+### 1. Biomechanical Phonetics & Acoustic Ecology
+* **Articulatory Mechanics:** Vowels and consonants map to continuous coordinates across independent articulatory tiers (lips, coronal tongue tip/blade, dorsal tongue body, and glottis).
+* **Autosegmental Conservation:** Segment deletion preserves moraic mass, dorsal frontness, and laryngeal stiffness, producing compensatory vowel lengthening, umlaut, and tonogenesis (register and contour tones) organically.
+* **Environmental Acoustics:** Models vocal fold hydration tax, air density ($\rho_{\text{air}}$), ambient noise, and canopy acoustic damping. Warm, humid lowlands penalize consonant clusters and favor open CV sonority; cold or high-altitude regions license ejectives and complex onsets.
+* **Topological Mode-Seeking:** Emergent phonemic inventories are discovered as 3D energy-weighted density peaks ($U \times \text{duration} \times \text{salience}$) with local sharpness gating, cleanly separating contrastive phonemes from transitional allophones (e.g., unstressed schwa reduction, intervocalic spirantization).
 
-### 3. Geopolitics & Urban Networks
-* **Local City Demographics:** Settlements maintain independent populations, fortifications, and local carrying capacities—no artificial teleportation or global pooling.
-* **Dynamic Transport Networks:** Pioneers and trade caravans carve physical roads on land and sea lanes across water that permanently lower transit friction.
-* **Siege Warfare & Substrate Shockwaves:** Armies suffer logistical distance decay. Defeated capitals trigger demographic assimilation, transferring loanwords, phonemes, and grammar into the conqueror's language.
-* **Dormant Classical Languages:** Extinct civilizations persist in a classical archive, allowing scholars and daughter colonies to revive archaic liturgical roots.
+### 2. 7D Cognitive Semantics & Lexicon Growth
+* **7D Semantic Space:** Lexemes occupy continuous vectors across seven cognitive dimensions: *Concreteness, Animacy, Valence, Potency, Dynamism, Sociality, and Extension*.
+* **Thermodynamic Neologisms:** Vocabulary expands through a competitive Boltzmann distribution between root creation, compounding, and derivational affixation, weighted by morphological synthesis, semantic density, and word-length cost.
+* **Autonomous Grammaticalization:** High-frequency roots with low concreteness bleach into grammatical operators (case markers, TAM markers, applicatives) along continuous grammaticalization clines.
+* **Communicative Contrast Maintenance:** Surfaces homophonic collisions to penalize ambiguous merges, driving functional differentiation.
 
-### 4. High-Performance Hardware Engine
-* **Vectorized Spatial Fields:** Replaces cellular-automata loops with NumPy/PyTorch Euclidean Power Fields ($<1\text{ms}$ per tick).
-* **Batch Semantic Filtering:** GPU-accelerated candidate distance validation using PyTorch CUDA with graceful CPU/NumPy fallbacks.
+### 3. Emergent Morphosyntax
+* **Continuous Typology:** Head-directionality ($h \in [0, 1]$) continuously orders constituents (SOV $\leftrightarrow$ SVO $\leftrightarrow$ VSO) and adposition placement via Boltzmann potentials.
+* **Morphological Synthesis:** Governs isolating, agglutinative, and fusional strategies based on morpheme-to-word ratios and boundary friction.
+* **Syntactic Alignment:** Derives Ergative-Absolutive vs. Nominative-Accusative marking from the balance of cultural potency and sociality attention.
+* **Phonotactic Repair:** Morpheme concatenation runs through sonority sequencing, hiatus resolution, and stress-timed prosody.
+
+### 4. Geography & Demographics
+* **Continuous 2D Geography:** Elevation, orographic rainfall, Hadley-cell subsidence, and emergent vegetation determine carrying capacity and resource profiles (grain, livestock, maritime, minerals).
+* **Territory & Infrastructure:** Populations clear farm plots, expand borders via Euclidean power fields, and build roads that lower transit friction.
+* **Conflict & Contact:** Deficits trigger border friction, conquest, lexical borrowing, and substrate influence.
+
+## Project Structure
+
+```text
+├── articulatory_space.py  # 3D IPA mapping and suprasegmental projection
+├── energy.py              # Biomechanical costs, transition friction, and cluster repair
+├── gpu_accelerator.py     # Hardware tensor acceleration (CUDA / NumPy SIMD)
+├── grammar.py             # Autonomous operator discovery, clausal assembly, and paradigms
+├── index.html             # Web-based linguistic atlas, demographic map, and inspector
+├── language.py            # Speech community state, continuous drift, and inventory discovery
+├── lexicon.py             # Neologism dynamics, phonotactics, and compounding
+├── phoneme.py             # Multi-tier articulatory physics and autosegmental invariants
+├── pronouncer.py          # Universal IPA normalizer and eSpeak-NG audio synthesis
+├── semantics.py           # 7D cognitive vector space and biological prototypes
+├── syllable.py            # Sonority syllabification, stress assignment, and reduction
+├── translator.py          # Compositional semantic translation and POS classification
+├── visualizer.py          # HTTP server, state serialization, and simulation harness
+├── word.py                # Lexical entry model with morpheme tracking and caching
+└── world_map.py           # Orographic climate, economic production, and territory grid
+```
 
 ## Quick Start
 
 ### Prerequisites
 * Python 3.9+
-* NumPy (Required)
-* PyTorch (Optional, enables CUDA acceleration)
-* eSpeak-NG (Optional, enables live speech synthesis)
+* NumPy
+* PyTorch *(optional, for CUDA acceleration)*
+* eSpeak-NG *(optional, for audio synthesis)*
 
 ```bash
 pip install numpy torch
 ```
 
-### Running the Observer
+### Running the Simulator
 
 1. Clone the repository:
    ```bash
@@ -46,40 +71,29 @@ pip install numpy torch
    cd evolang
    ```
 
-2. Start the simulation backend:
+2. Start the simulation server:
    ```bash
    python visualizer.py
    ```
 
-3. Open your browser at **`http://localhost:8008`**.
+3. Open your browser at:
+   ```text
+   http://localhost:8008
+   ```
 
-## Project Structure
+## Inspector Controls
 
-```text
-├── articulatory_space.py  # 3D IPA resolver & secondary articulation mapping
-├── energy.py              # Biomechanical aerodynamics, PTP, and transition costs
-├── gpu_accelerator.py     # Hardware tensor backend (CUDA & NumPy SIMD)
-├── grammar.py             # Emergent morphosyntax, DOM, and conjugation engine
-├── index.html             # Client-side canvas visualizer & City Inspector
-├── language.py            # Speech community, inventory clustering, and drift
-├── lexicon.py             # Derivational morphology and vocabulary growth
-├── phoneme.py             # Immutable phonetic profiles & physics invariants
-├── pronouncer.py          # eSpeak-NG audio synthesis & IPA transpiler
-├── semantics.py           # 7D cognitive vector space and prototype anchors
-├── syllable.py            # Weight-to-stress, sonority syllabification & tones
-├── translator.py          # POS-constrained compositional semantic translation
-├── visualizer.py          # HTTP server and state serialization pipeline
-├── word.py                # Structural word unit with lazy form & cost caching
-└── world_map.py           # 2D physical terrain, cities, roads, and warfare
-```
+* **Simulation Deck:** Play, pause, step (1, 15, 50 epochs), and adjust simulation speed.
+* **Map Layers:** View Topography (Elevation), Population Density, Vegetation, Humidity, and Temperature.
+* **Analytics Tabs:**
+  * **Overview:** Articulatory effort (Joules), C:V ratio, phonemic entropy, and sociolinguistic tension (diglossia / standard canon divergence).
+  * **Population:** Economic breakdown (grain, livestock, marine, minerals) and carrying capacity.
+  * **7D Mindset:** Cultural attention distribution across the 7 cognitive axes.
+  * **Phonology:** Active feature series (ejectives, fricatives, nasals), emergent vowel/consonant charts, and token frequency stats.
+  * **Grammar:** Word order, synthesis index, noun declension, and verb conjugation tables.
+  * **City Inspector:** Inspect settlement history, fortification levels, and local population.
 
-## Controls & Usage
-
-* **Play / Pause / Step:** Control time evolution (ticks/epochs) and simulation pace directly from the control deck.
-* **Map Layer Toggle:** Switch between Topography, Population Density, Vegetation, Humidity, and Temperature.
-* **City Inspector:** Click on any settlement node on the map to inspect its living population, wall strength, original founder, and historical conquest chronicle.
-* **7D Mindset & Grammar:** Inspect real-time cultural attention shifts, emergent vowel/consonant charts, active feature series, and live verb/noun paradigm tables.
 
 ## License
 
-MIT License. Free for research, generative worldbuilding, and educational use.
+MIT License. Open for linguistic research, computational modeling, and generative worldbuilding.
